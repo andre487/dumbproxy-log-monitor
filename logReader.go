@@ -17,6 +17,7 @@ type LogReaderParams struct {
 	JournalDCommand     string
 	ExecDir             string
 	ProcessRestartLimit int
+	lastHandledTime     time.Time
 }
 
 type LogReader struct {
@@ -53,6 +54,7 @@ func (t *LogReader) ReadLogStreamToChannel(ch chan *LogLineData) {
 			if err == nil {
 				ch <- data
 				runNum = 0
+				t.lastHandledTime = time.Now().UTC()
 			} else {
 				log.Printf("WARN Parse log error: %s", err)
 			}
@@ -112,6 +114,8 @@ func (t *LogReader) IsAlive() bool {
 
 func (t *LogReader) launchProcess() error {
 	cmdParts := strings.Split(t.JournalDCommand, " ")
+	cmdParts = append(cmdParts, "--since", t.lastHandledTime.Format(time.RFC3339))
+	log.Printf("INFO Launching log process: %v", cmdParts)
 
 	cmd := exec.Command(cmdParts[0], cmdParts[1:]...)
 	cmd.Dir = t.ExecDir

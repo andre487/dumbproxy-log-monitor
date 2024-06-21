@@ -21,7 +21,7 @@ func main() {
 
 	for msg := range ch {
 		if msg != nil {
-			log.Printf("MSG: %+v\n", msg)
+			//log.Printf("MSG: %+v\n", msg)
 		}
 	}
 
