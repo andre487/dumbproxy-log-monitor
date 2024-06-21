@@ -85,7 +85,7 @@ func (t *LogReader) ReadLogStreamToChannel(ch chan *LogLineData) {
 	close(ch)
 }
 
-func (t *LogReader) Stop() error {
+func (t *LogReader) Stop() {
 	t.stopped = true
 
 	var resErr error
@@ -105,7 +105,9 @@ func (t *LogReader) Stop() error {
 		}
 	}
 
-	return resErr
+	if resErr != nil {
+		log.Printf("WARN Stop reader error: %s", resErr)
+	}
 }
 
 func (t *LogReader) IsAlive() bool {
