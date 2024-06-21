@@ -18,6 +18,7 @@ var logLineDnsRe = regexp.MustCompile(".+lookup (?P<host>\\S+): Temporary failur
 var logLineConnectionRefusedRe = regexp.MustCompile(".+dial tcp (?P<dest>\\S+):\\d+: connect: connection refused.*")
 var logLineCantDialRe = regexp.MustCompile(".+Can't satisfy \\S+ request: dial tcp:? (?:lookup )?(?P<host>\\S+):.*")
 var internalErrorRe = regexp.MustCompile(".*No such file or directory|Main process exited|Failed with result 'exit-code'.*")
+var serviceMessageRe = regexp.MustCompile(".+Stopping Dumb Proxy|Deactivated successfully|Started Dumb Proxy|Stopped Dumb Proxy|dumbproxy.service: Consumed|reloading password file|password file reloaded|Starting proxy server|Proxy server started.+")
 
 type LogLineType uint64
 
@@ -29,6 +30,7 @@ const (
 	LogLineTypeConnectionRefusedError
 	LogLineTypeCantDialError
 	LogLineTypeInternalError
+	LogLintTypeJustMessage
 )
 
 type LogLineData struct {
@@ -94,6 +96,10 @@ func ParseLogLine(logLine string) (*LogLineData, error) {
 
 	if internalErrorRe.MatchString(logLine) {
 		return &LogLineData{LogLineType: LogLineTypeInternalError}, nil
+	}
+
+	if serviceMessageRe.MatchString(logLine) {
+		return &LogLineData{LogLineType: LogLintTypeJustMessage}, nil
 	}
 
 	return nil, ErrorLogLineNotMatch

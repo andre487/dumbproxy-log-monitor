@@ -16,18 +16,7 @@ func TestBigLog(t *testing.T) {
 	for _, logLine := range strings.Split(logText, "\n") {
 		res, err := ParseLogLine(logLine)
 		if err != nil || res == nil {
-			if !strings.Contains(logLine, "Stopping Dumb Proxy") &&
-				!strings.Contains(logLine, "Deactivated successfully") &&
-				!strings.Contains(logLine, "Started Dumb Proxy") &&
-				!strings.Contains(logLine, "Stopped Dumb Proxy") &&
-				!strings.Contains(logLine, "dumbproxy.service: Consumed") &&
-				!strings.Contains(logLine, "reloading password file") &&
-				!strings.Contains(logLine, "password file reloaded") &&
-				!strings.Contains(logLine, "Starting proxy server") &&
-				!strings.Contains(logLine, "Proxy server started") {
-				t.Errorf("error %s: unable to parse log line: %s", err, logLine)
-				return
-			}
+			t.Errorf("error %s: unable to parse log line: %s", err, logLine)
 		}
 	}
 }
