@@ -1,6 +1,8 @@
 package main
 
-import "log"
+import (
+	"log"
+)
 
 func main() {
 	reader, err := NewLogReader(LogReaderParams{
@@ -8,13 +10,10 @@ func main() {
 		ExecDir:         "testJournalD",
 	})
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("ERROR Unable to create new log reader: %s\n", err)
 	}
-	defer func() {
-		if err := reader.Stop(); err != nil {
-			log.Printf("WARN Close reader error: %s", err)
-		}
-	}()
+	//goland:noinspection GoUnhandledErrorResult
+	defer reader.Stop()
 
 	ch := make(chan *LogLineData)
 	go reader.ReadLogStreamToChannel(ch)

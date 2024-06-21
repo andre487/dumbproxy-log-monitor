@@ -63,13 +63,13 @@ func (t *LogReader) ReadLogStreamToChannel(ch chan *LogLineData) {
 			log.Printf("WARN Scanner close error: %s", err)
 		}
 
-		processState, waitErr := t.cmd.Process.Wait()
+		_, waitErr := t.cmd.Process.Wait()
 		if waitErr != nil {
 			log.Printf("WARN Wait process error: %s", waitErr)
 		}
 
 		runNum++
-		if processState.ExitCode() == -1 || runNum >= t.ProcessRestartLimit {
+		if runNum >= t.ProcessRestartLimit {
 			break
 		}
 
