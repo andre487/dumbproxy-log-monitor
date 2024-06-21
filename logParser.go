@@ -11,9 +11,13 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-var logLineGeneralRe = regexp.MustCompile(".+dumbproxy\\[\\d+]: (?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+(?P<ip>\\S+):\\d+ [A-Z]+")
-var logLineRequestRe = regexp.MustCompile(".+dumbproxy\\[\\d+]: (?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+Request:\\s+(?P<ip>\\S+):\\d+ => (?P<dest>\\S+?)(?::\\d+)? \"(?P<user>[\\w-]+)\"\\s")
-var logLineErrorRe = regexp.MustCompile(".+dumbproxy\\[\\d+]: (?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) .+error from (?P<ip>\\S+):\\d+")
+var logLineGeneralRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+(?P<ip>\\S+):\\d+ [A-Z]+")
+var logLineRequestRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+Request:\\s+(?P<ip>\\S+):\\d+ => (?P<dest>\\S+?)(?::\\d+)? \"(?P<user>[\\w-]*)\"(?:\\s+(?:HTTP/[\\d.]+)?\\s*[A-Z]+ (?:https?:)?//(?P<host>[\\w.-]+?)(?::\\d+)?/)?")
+var logLineErrorRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) .+error from (?P<ip>\\S+):\\d+")
+var logLineDnsRe = regexp.MustCompile(".+lookup (?P<host>\\S+): Temporary failure in name resolution.*")
+var logLineConnectionRefusedRe = regexp.MustCompile(".+dial tcp (?P<dest>\\S+):\\d+: connect: connection refused.*")
+var logLineCantDialRe = regexp.MustCompile(".+Can't satisfy \\S+ request: dial tcp:? (?:lookup )?(?P<host>\\S+):.*")
+var internalErrorRe = regexp.MustCompile(".*No such file or directory|Main process exited|Failed with result 'exit-code'.*")
 
 type LogLineType uint64
 
@@ -21,6 +25,10 @@ const (
 	LogLineTypeGeneral LogLineType = iota
 	LogLineTypeRequest
 	LogLineTypeError
+	LogLineTypeDnsError
+	LogLineTypeConnectionRefusedError
+	LogLineTypeCantDialError
+	LogLineTypeInternalError
 )
 
 type LogLineData struct {
@@ -30,6 +38,7 @@ type LogLineData struct {
 	Level       string
 	SrcIp       net.IP
 	DestIp      net.IP
+	DestHost    string
 	User        string
 }
 
@@ -56,6 +65,35 @@ func ParseLogLine(logLine string) (*LogLineData, error) {
 		return res, nil
 	} else if !errors.Is(err, ErrorLogLineNotMatch) {
 		return nil, err
+	}
+
+	if resMap := parseLogLineWithRe(logLineDnsRe, logLine); resMap != nil {
+		return &LogLineData{
+			LogLineType: LogLineTypeDnsError,
+			DestHost:    resMap["host"],
+		}, nil
+	}
+
+	if resMap := parseLogLineWithRe(logLineConnectionRefusedRe, logLine); resMap != nil {
+		destIp, ipErr := parseIp(resMap["dest"])
+		if ipErr != nil {
+			return nil, ipErr
+		}
+		return &LogLineData{
+			LogLineType: LogLineTypeConnectionRefusedError,
+			DestIp:      destIp,
+		}, nil
+	}
+
+	if resMap := parseLogLineWithRe(logLineCantDialRe, logLine); resMap != nil {
+		return &LogLineData{
+			LogLineType: LogLineTypeCantDialError,
+			DestHost:    resMap["host"],
+		}, nil
+	}
+
+	if internalErrorRe.MatchString(logLine) {
+		return &LogLineData{LogLineType: LogLineTypeInternalError}, nil
 	}
 
 	return nil, ErrorLogLineNotMatch
@@ -100,7 +138,6 @@ func ParseLogLineRequest(logLine string) (*LogLineData, error) {
 	var err *multierror.Error
 	dt, err := parseDateTime(resMap, err)
 	err = validateLogEntries(resMap, err)
-	err = validateUser(resMap, err)
 
 	srcIp, srcIpErr := parseIp(resMap["ip"])
 	if srcIpErr != nil {
@@ -124,6 +161,7 @@ func ParseLogLineRequest(logLine string) (*LogLineData, error) {
 		SrcIp:       srcIp,
 		DestIp:      destIp,
 		User:        resMap["user"],
+		DestHost:    resMap["host"],
 	}
 	return &res, nil
 }
@@ -208,13 +246,6 @@ func validateLogEntries(resMap map[string]string, err *multierror.Error) *multie
 
 	if resMap["level"] == "" {
 		err = multierror.Append(err, errors.Join(ErrorParse, errors.New("empty level")))
-	}
-	return err
-}
-
-func validateUser(resMap map[string]string, err *multierror.Error) *multierror.Error {
-	if resMap["user"] == "" {
-		err = multierror.Append(err, errors.Join(ErrorParse, errors.New("empty logger")))
 	}
 	return err
 }

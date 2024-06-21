@@ -1,1 +1,1 @@
-Jun 21 13:00:47 p487-2-am.jethelix.ru dumbproxy[111654]: PROXY   : 2024/06/21 13:00:47 handler.go:138: INFO     Request: 143.178.232.21:57121 => 2.56.204.64:443 "andre487" HTTP/2.0 POST /
+Jun 18 00:07:26 p487-2-am.jethelix.ru dumbproxy[82403]: PROXY   : 2024/06/18 00:07:26 handler.go:138: INFO     Request: 143.178.228.182:64154 => 2.56.204.64:443 "andre487" HTTP/1.1 GET http://ifconfig.co/

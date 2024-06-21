@@ -11,6 +11,27 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestBigLog(t *testing.T) {
+	logText := readFileToString("testData/dumbproxy-big.log")
+	for _, logLine := range strings.Split(logText, "\n") {
+		res, err := ParseLogLine(logLine)
+		if err != nil || res == nil {
+			if !strings.Contains(logLine, "Stopping Dumb Proxy") &&
+				!strings.Contains(logLine, "Deactivated successfully") &&
+				!strings.Contains(logLine, "Started Dumb Proxy") &&
+				!strings.Contains(logLine, "Stopped Dumb Proxy") &&
+				!strings.Contains(logLine, "dumbproxy.service: Consumed") &&
+				!strings.Contains(logLine, "reloading password file") &&
+				!strings.Contains(logLine, "password file reloaded") &&
+				!strings.Contains(logLine, "Starting proxy server") &&
+				!strings.Contains(logLine, "Proxy server started") {
+				t.Errorf("error %s: unable to parse log line: %s", err, logLine)
+				return
+			}
+		}
+	}
+}
+
 func TestParseLogLineGeneral(t *testing.T) {
 	logLine := readFileToString("testData/log-line-general.txt")
 	res, err := ParseLogLineGeneral(logLine)
@@ -47,11 +68,12 @@ func TestParseLogLineRequest(t *testing.T) {
 		t,
 		LogLineData{
 			LogLineType: LogLineTypeRequest,
-			DateTime:    time.Date(2024, 6, 21, 13, 0, 47, 0, time.UTC),
+			DateTime:    time.Date(2024, 6, 18, 0, 7, 26, 0, time.UTC),
 			LoggerName:  "PROXY",
 			Level:       "INFO",
-			SrcIp:       net.IPv4(143, 178, 232, 21),
+			SrcIp:       net.IPv4(143, 178, 228, 182),
 			DestIp:      net.IPv4(2, 56, 204, 64),
+			DestHost:    "ifconfig.co",
 			User:        "andre487",
 		},
 		*res,
@@ -60,7 +82,7 @@ func TestParseLogLineRequest(t *testing.T) {
 	res, err = ParseLogLineRequest("")
 	assert.ErrorIs(t, ErrorLogLineNotMatch, err)
 
-	res, err = ParseLogLineRequest(strings.Replace(logLine, "143.178.232.21", "328.1.1.1", 1))
+	res, err = ParseLogLineRequest(strings.Replace(logLine, "143.178.228.182", "328.1.1.1", 1))
 	assert.ErrorIs(t, err, ErrorParse)
 	assert.Contains(t, err.Error(), "wrong IP")
 	assert.Contains(t, err.Error(), "src IP")
