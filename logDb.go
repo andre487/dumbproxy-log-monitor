@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,7 +11,17 @@ import (
 )
 
 type LogDb struct {
-	db *sql.DB
+	db               *sql.DB
+	insertQuery      *sql.Stmt
+	selectSrcIpQuery *sql.Stmt
+}
+
+type SrcIpReportData struct {
+	SrcIp   string
+	Reqs    int
+	LastId  int
+	FirstTs int
+	LastTs  int
 }
 
 func NewLogDb(dbPath string) (*LogDb, error) {
@@ -33,17 +45,17 @@ func (t *LogDb) Init() error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS log_records (
 			id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			ts INTEGER,
-			log_type INTEGER,
-			date_time TEXT,
-			logger_name TEXT,
-			level TEXT,
-			src_ip TEXT,
-			dest_ip TEXT,
-			dest_host TEXT,
-			user TEXT
+			ts INTEGER NOT NULL,
+			log_type INTEGER NOT NULL,
+			date_time TEXT NOT NULL,
+			logger_name TEXT NOT NULL,
+			level TEXT NOT NULL,
+			src_ip TEXT NOT NULL,
+			dest_ip TEXT NOT NULL,
+			dest_host TEXT NOT NULL,
+			user TEXT NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS ts ON log_records (ts)`,
+		`CREATE INDEX IF NOT EXISTS id_src_ip ON log_records (id, src_ip)`,
 		`REPLACE INTO schema_meta (name, value) VALUES ("version", "1")`,
 	}
 
@@ -64,10 +76,66 @@ func (t *LogDb) Init() error {
 	}
 
 	if version != 1 {
-		log.Fatalf("ERROR Version is incorrect: %s\n", version)
+		log.Fatalf("ERROR Version is incorrect: %d\n", version)
 	}
 
+	insertQuery, err := t.db.Prepare(`
+		INSERT INTO
+			log_records (ts, log_type, date_time, logger_name, level, src_ip, dest_ip, dest_host, user)
+		VALUES 
+		    (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	t.insertQuery = insertQuery
+
+	selectSrcIpQuery, err := t.db.Prepare(`
+		SELECT 
+		    src_ip AS ip,
+		    COUNT(*) AS reqs,
+		    MAX(id) AS last_id,
+		    MIN(ts) AS first_ts,
+		    MAX(ts) AS last_ts
+		FROM 
+		    log_records
+		WHERE
+			id > ?
+			AND src_ip != ""
+		GROUP BY 
+		    src_ip
+		HAVING
+		    reqs >= 10
+		ORDER BY
+		    reqs DESC
+	`)
+	if err != nil {
+		return err
+	}
+	t.selectSrcIpQuery = selectSrcIpQuery
+
 	return nil
+}
+
+func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelFunc()
+
+	res, err := t.selectSrcIpQuery.QueryContext(ctx, fromId)
+	if err != nil {
+		return nil, fmt.Errorf("error when executing query: %s", err)
+	}
+
+	var items []SrcIpReportData
+	for res.Next() {
+		var curData SrcIpReportData
+		if err := res.Scan(&curData.SrcIp, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
+			return nil, fmt.Errorf("error when fetching element: %s", err)
+		}
+		items = append(items, curData)
+	}
+
+	return items, nil
 }
 
 func (t *LogDb) Close() {
@@ -77,18 +145,8 @@ func (t *LogDb) Close() {
 }
 
 func (t *LogDb) WriteRecordsFromChannel(ch chan *LogLineData) {
-	insertQuery, err := t.db.Prepare(`
-		INSERT INTO
-			log_records (ts, log_type, date_time, logger_name, level, src_ip, dest_ip, dest_host, user)
-		VALUES 
-		    (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		log.Fatalf("ERROR Ubable to prepare DB request: %s\n", err)
-	}
-
 	for item := range ch {
-		_, err := insertQuery.Exec(
+		_, err := t.insertQuery.Exec(
 			time.Now().UnixMilli(),
 			item.LogLineType,
 			item.DateTime.Format(time.RFC3339),

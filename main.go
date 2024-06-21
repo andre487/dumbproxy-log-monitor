@@ -21,11 +21,14 @@ func main() {
 	}
 	defer reader.Stop()
 
+	reporter := NewLogReporter(db, 10*time.Minute)
+
 	ch := make(chan *LogLineData)
 	go reader.ReadLogStreamToChannel(ch)
 	go db.WriteRecordsFromChannel(ch)
 
-	time.Sleep(1 * time.Minute)
+	reporter.GenerateReport()
+	time.Sleep(3 * time.Second)
 
 	log.Println("Reading finished")
 }
