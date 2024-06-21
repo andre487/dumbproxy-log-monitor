@@ -87,10 +87,9 @@ func (t *LogDb) WriteRecordsFromChannel(ch chan *LogLineData) {
 		log.Fatalf("ERROR Ubable to prepare DB request: %s\n", err)
 	}
 
-	// TODO: Sometimes dates are absent. Fix this
 	for item := range ch {
 		_, err := insertQuery.Exec(
-			item.DateTime.Unix(),
+			time.Now().UnixMilli(),
 			item.LogLineType,
 			item.DateTime.Format(time.RFC3339),
 			item.LoggerName,
