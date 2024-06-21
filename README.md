@@ -1,2 +1,1 @@
-# dubmproxy-log-monitor
-Dumbproxy log monitor
+# DumbProxy log monitor
