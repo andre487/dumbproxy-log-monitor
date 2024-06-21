@@ -5,7 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d702708-f410-467f-8c78-6a0ba5f36bd7" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/logParser_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/logParser_test.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logReader.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/testJournald/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,27 +18,29 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "andre487"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;andre487&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "git@github.com:andre487/dumbproxy-log-monitor.git",
-    "accountId": "39667e21-81db-49d0-af7d-925f3b5e6cd4"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:andre487/dumbproxy-log-monitor.git&quot;,
+    &quot;accountId&quot;: &quot;39667e21-81db-49d0-af7d-925f3b5e6cd4&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
   <component name="ProjectId" id="2iBqQe5Niqlc1nHn8Bc2KlFdr0q" />
   <component name="ProjectViewState">
     <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Go Build.go build github.com/andre487/dumbproxy-log-monitor.executor": "Debug",
+    "Go Build.go build main.go.executor": "Debug",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.go.formatter.settings.were.checked": "true",
     "RunOnceActivity.go.migrated.go.modules.settings": "true",
@@ -59,6 +63,18 @@
       <recent name="$PROJECT_DIR$/testData" />
     </key>
   </component>
+  <component name="RunManager">
+    <configuration name="go build github.com/andre487/dumbproxy-log-monitor" type="GoApplicationRunConfiguration" factoryName="Go Application" nameIsGenerated="true">
+      <module name="dumbproxy-log-monitor" />
+      <working_directory value="$PROJECT_DIR$" />
+      <go_parameters value="-i" />
+      <kind value="PACKAGE" />
+      <package value="github.com/andre487/dumbproxy-log-monitor" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <method v="2" />
+    </configuration>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -75,7 +91,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1718974302492</updated>
-      <workItem from="1718974303629" duration="10701000" />
+      <workItem from="1718974303629" duration="24464000" />
     </task>
     <task id="LOCAL-00001" summary="Implement basic parsing">
       <option name="closed" value="true" />
@@ -101,7 +117,31 @@
       <option name="project" value="LOCAL" />
       <updated>1718984603122</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Add queue">
+      <option name="closed" value="true" />
+      <created>1718987881498</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1718987881498</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Improve request log parsing">
+      <option name="closed" value="true" />
+      <created>1718992556015</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1718992556015</updated>
+    </task>
+    <task id="LOCAL-00006" summary="Add just message line type">
+      <option name="closed" value="true" />
+      <created>1718992748842</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1718992748842</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -110,7 +150,10 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Im" />
     <MESSAGE value="Implement basic parsing" />
-    <option name="LAST_COMMIT_MESSAGE" value="Implement basic parsing" />
+    <MESSAGE value="Add queue" />
+    <MESSAGE value="Improve request log parsing" />
+    <MESSAGE value="Add just message line type" />
+    <option name="LAST_COMMIT_MESSAGE" value="Add just message line type" />
   </component>
   <component name="VgoProject">
     <settings-migrated>true</settings-migrated>
