@@ -101,7 +101,7 @@ func handleArgs(args *cliArgs) {
 	if args.dbPath == "" {
 		log.Fatalln("-db-path is required")
 	}
-	dbDir := path.Base(args.dbPath)
+	dbDir := path.Dir(args.dbPath)
 	if _, err := os.Stat(dbDir); err != nil && os.IsNotExist(err) {
 		if err := os.MkdirAll(dbDir, 0755); err != nil {
 			log.Fatalf("Could not create DB dir: %v\n", err)
