@@ -20,6 +20,7 @@ type LogDb struct {
 	insertKvDataValueQuery    *sql.Stmt
 	selectKvDataStrValueQuery *sql.Stmt
 	selectKvDataIntValueQuery *sql.Stmt
+	vacuumCleanLogRecords     *sql.Stmt
 }
 
 type BasicGroupReportData struct {
@@ -145,34 +146,64 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 }
 
 func (t *LogDb) SetLastId(lastId int) error {
-	if _, err := t.insertKvDataValueQuery.Exec("lastId", lastId); err != nil {
-		return err
-	}
-	return nil
+	key := "lastId"
+	return t.SetKvRecord(key, lastId)
 }
 
 func (t *LogDb) GetLastId() (int, error) {
-	res := t.selectKvDataIntValueQuery.QueryRow("lastId")
+	return t.GetKvIntRecord("lastId")
+}
+
+func (t *LogDb) LogRecordsVacuumClean(maxSecondsAge int64) (int64, error) {
+	borderTs := time.Now().Unix() - maxSecondsAge
+	res, err := t.vacuumCleanLogRecords.Exec(borderTs)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func (t *LogDb) GetKvIntRecord(key string) (int, error) {
+	res := t.selectKvDataIntValueQuery.QueryRow(key)
 	err := res.Err()
 	if err != nil {
 		return 0, err
 	}
 
-	var lastId int
-	err = res.Scan(&lastId)
+	var val int
+	err = res.Scan(&val)
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	} else if err != nil {
 		return 0, err
 	}
 
-	return lastId, nil
+	return val, nil
 }
 
-func (t *LogDb) Close() {
-	if err := t.db.Close(); err != nil {
-		log.Printf("WARN Close DB error: %s\n", err)
+func (t *LogDb) GetKvStrRecord(key string) (string, error) {
+	res := t.selectKvDataStrValueQuery.QueryRow(key)
+	err := res.Err()
+	if err != nil {
+		return "", err
 	}
+
+	var val string
+	err = res.Scan(&val)
+	if err != nil && errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+
+	return val, nil
+}
+
+func (t *LogDb) SetKvRecord(key string, val interface{}) error {
+	if _, err := t.insertKvDataValueQuery.Exec(key, val); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (t *LogDb) WriteRecordsFromChannel(ch chan *LogLineData) {
@@ -192,6 +223,12 @@ func (t *LogDb) WriteRecordsFromChannel(ch chan *LogLineData) {
 		if err != nil {
 			log.Fatalf("ERROR Can not insert data: %s\n", err)
 		}
+	}
+}
+
+func (t *LogDb) Close() {
+	if err := t.db.Close(); err != nil {
+		log.Printf("WARN Close DB error: %s\n", err)
 	}
 }
 
@@ -217,6 +254,7 @@ func (t *LogDb) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS id_src_ip ON log_records (id, src_ip)`,
 		`CREATE INDEX IF NOT EXISTS id_user ON log_records (id, user)`,
 		`CREATE INDEX IF NOT EXISTS id_dest_host ON log_records (id, dest_host)`,
+		`CREATE INDEX IF NOT EXISTS ts ON log_records (ts)`,
 
 		`REPLACE INTO kv_data (name, value) VALUES ("schema_version", "1")`,
 	}
@@ -343,6 +381,12 @@ func (t *LogDb) prepareQueries() error {
 		return err
 	}
 	t.selectKvDataIntValueQuery = selectKvDataIntValueQuery
+
+	vacuumCleanLogRecords, err := t.db.Prepare(`DELETE FROM log_records WHERE ts < ?`)
+	if err != nil {
+		return err
+	}
+	t.vacuumCleanLogRecords = vacuumCleanLogRecords
 
 	return nil
 }

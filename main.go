@@ -21,21 +21,46 @@ func main() {
 	}
 	defer reader.Stop()
 
+	scheduler, err := NewScheduler(db, 1*time.Second)
+	if err != nil {
+		log.Fatalf("ERROR Unable to create new log reader: %s\n", err)
+	}
+	defer scheduler.Stop()
+
 	reporter, err := NewLogReporter(db, 10*time.Minute)
 	if err != nil {
 		log.Fatalf("ERROR Unable to create new reporter: %s\n", err)
 	}
 
+	err = scheduler.ScheduleExactTime(SchedulerJobExactTimeDescription{
+		TaskName: "CreateReport",
+		Hour:     -1,
+		Minute:   -1,
+		Second:   0,
+		Task: func() error {
+			report, err := reporter.GenerateReport()
+			if err != nil {
+				return err
+			}
+			log.Println(report)
+			return nil
+		},
+	})
+	if err != nil {
+		log.Fatalf("ERROR Unable to schedule report task: %s\n", err)
+	}
+
 	ch := make(chan *LogLineData)
 	go reader.ReadLogStreamToChannel(ch)
 	go db.WriteRecordsFromChannel(ch)
+	go scheduler.Run()
 
 	html, err := reporter.GenerateReport()
 	if err != nil {
 		log.Fatalf("ERROR Unable to create report: %s\n", err)
 	}
-	log.Println(html)
+	log.Println(len(html))
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(300 * time.Second)
 	log.Println("Reading finished")
 }
