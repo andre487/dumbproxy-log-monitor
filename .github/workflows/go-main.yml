@@ -21,7 +21,7 @@ jobs:
       run: go test -v ./...
 
     - name: Build
-      run: go build -vo ./build/ .
+      run: go build -v -o ./build/ .
 
     - name: Build bundle
       run: cp -r templates build && cd build && tar -czvf dumbproxy-log-monitor.tar.gz .
