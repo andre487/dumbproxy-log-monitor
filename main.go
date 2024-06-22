@@ -25,31 +25,19 @@ func main() {
 	args := getArgs()
 	handleArgs(&args)
 
-	db, err := NewLogDb(args.dbPath)
-	if err != nil {
-		log.Fatalf("ERROR Unable to create DB: %s", err)
-	}
+	db := Must1(NewLogDb(args.dbPath))
 	defer db.Close()
 
-	reader, err := NewLogReader(LogReaderParams{
+	reader := Must1(NewLogReader(LogReaderParams{
 		JournalDCommand: args.logCmd,
 		ExecDir:         args.logCmdDir,
-	})
-	if err != nil {
-		log.Fatalf("ERROR Unable to create new log reader: %s\n", err)
-	}
+	}))
 	defer reader.Stop()
 
-	scheduler, err := NewScheduler(db, 1*time.Second)
-	if err != nil {
-		log.Fatalf("ERROR Unable to create new log reader: %s\n", err)
-	}
+	scheduler := Must1(NewScheduler(db, 1*time.Second))
 	defer scheduler.Stop()
 
-	reporter, err := NewLogReporter(db, 10*time.Minute)
-	if err != nil {
-		log.Fatalf("ERROR Unable to create new reporter: %s\n", err)
-	}
+	reporter := Must1(NewLogReporter(db, 10*time.Minute))
 
 	Must0(
 		scheduler.ScheduleExactTime(SchedulerJobExactTimeDescription{
