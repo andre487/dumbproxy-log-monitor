@@ -14,3 +14,10 @@ func Must1[T interface{}](arg T, err error) T {
 	}
 	return arg
 }
+
+func AutoClose(close func() error) {
+	err := close()
+	if err != nil {
+		log.Printf("WARN Error when closing: %s\n", err)
+	}
+}
