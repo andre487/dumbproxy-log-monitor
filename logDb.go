@@ -154,8 +154,8 @@ func (t *LogDb) GetLastId() (int, error) {
 	return t.GetKvIntRecord("lastId")
 }
 
-func (t *LogDb) LogRecordsVacuumClean(maxSecondsAge int64) (int64, error) {
-	borderTs := time.Now().Unix() - maxSecondsAge
+func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
+	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
 	res, err := t.vacuumCleanLogRecords.Exec(borderTs)
 	if err != nil {
 		return 0, err

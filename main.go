@@ -50,6 +50,16 @@ func main() {
 		log.Fatalf("ERROR Unable to schedule report task: %s\n", err)
 	}
 
+	scheduler.Schedule(SchedulerJobDescription{
+		TaskName: "VacuumCleanLogRecords",
+		Interval: 1 * time.Hour,
+		Task: func() error {
+			recsDeleted, err := db.LogRecordsVacuumClean(48 * time.Hour)
+			log.Printf("INFO Vacuum clean records deleted: %d\n", recsDeleted)
+			return err
+		},
+	})
+
 	ch := make(chan *LogLineData)
 	go reader.ReadLogStreamToChannel(ch)
 	go db.WriteRecordsFromChannel(ch)
