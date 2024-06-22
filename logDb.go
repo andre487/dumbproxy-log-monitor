@@ -17,11 +17,13 @@ type LogDb struct {
 }
 
 type SrcIpReportData struct {
-	SrcIp   string
-	Reqs    int
-	LastId  int
-	FirstTs int
-	LastTs  int
+	SrcIp     string
+	Reqs      int
+	LastId    int
+	FirstTs   int
+	LastTs    int
+	FirstTime string
+	LastTime  string
 }
 
 func NewLogDb(dbPath string) (*LogDb, error) {
@@ -132,6 +134,8 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 		if err := res.Scan(&curData.SrcIp, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
 			return nil, fmt.Errorf("error when fetching element: %s", err)
 		}
+		curData.FirstTime = time.Unix(int64(curData.FirstTs/1000), 0).UTC().Format(time.RFC3339)
+		curData.LastTime = time.Unix(int64(curData.LastTs/1000), 0).UTC().Format(time.RFC3339)
 		items = append(items, curData)
 	}
 

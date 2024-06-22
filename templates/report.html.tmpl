@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf8">
+<h2>Src IP stats</h2>
+<table>
+    <tr>
+        <th>Src IP</th>
+        <th>Requests</th>
+        <th>First seen</th>
+        <th>Last seen</th>
+    </tr>
+    {{ range .SrcIpStats}}
+        <tr>
+            <td>{{ .SrcIp }}</td>
+            <td>{{ .Reqs }}</td>
+            <td>{{ .FirstTime }}</td>
+            <td>{{ .LastTime }}</td>
+        </tr>
+    {{ end }}
+</table>

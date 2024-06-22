@@ -21,14 +21,21 @@ func main() {
 	}
 	defer reader.Stop()
 
-	reporter := NewLogReporter(db, 10*time.Minute)
+	reporter, err := NewLogReporter(db, 10*time.Minute)
+	if err != nil {
+		log.Fatalf("ERROR Unable to create new reporter: %s\n", err)
+	}
 
 	ch := make(chan *LogLineData)
 	go reader.ReadLogStreamToChannel(ch)
 	go db.WriteRecordsFromChannel(ch)
 
-	reporter.GenerateReport()
-	time.Sleep(3 * time.Second)
+	html, err := reporter.GenerateReport()
+	if err != nil {
+		log.Fatalf("ERROR Unable to create report: %s\n", err)
+	}
+	log.Println(html)
 
+	time.Sleep(3 * time.Second)
 	log.Println("Reading finished")
 }
