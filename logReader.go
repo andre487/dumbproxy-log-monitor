@@ -13,7 +13,6 @@ import (
 )
 
 type LogReaderParams struct {
-	JournalDUnit        string
 	JournalDCommand     string
 	ExecDir             string
 	ProcessRestartLimit int
@@ -28,11 +27,8 @@ type LogReader struct {
 }
 
 func NewLogReader(params LogReaderParams) (*LogReader, error) {
-	if params.JournalDUnit == "" {
-		params.JournalDUnit = "dumbproxy.service"
-	}
 	if params.JournalDCommand == "" {
-		params.JournalDCommand = "sudo journald -fu " + params.JournalDUnit
+		params.JournalDCommand = "sudo journald -fu dumbproxy.service"
 	}
 	if params.ProcessRestartLimit == 0 {
 		params.ProcessRestartLimit = 3
