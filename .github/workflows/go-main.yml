@@ -27,4 +27,4 @@ jobs:
       run: cp -r templates build && cd build && tar -czvf dumbproxy-log-monitor.tar.gz .
 
     - name: See files
-      run: tar -tf dumbproxy-log-monitor.tar.gz
+      run: tar -tf build/dumbproxy-log-monitor.tar.gz
