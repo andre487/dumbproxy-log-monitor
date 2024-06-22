@@ -21,10 +21,10 @@ jobs:
       run: go test -v ./...
 
     - name: Build
-      run: go build -v ./...
+      run: go build -vo ./build/ .
 
     - name: Build bundle
-      run: tar -czvf dumbproxy-log-monitor.tar.gz dumbproxy-log-monitor templates
+      run: cp -r templates build && cd build && tar -czvf dumbproxy-log-monitor.tar.gz .
 
     - name: See files
       run: tar -tf dumbproxy-log-monitor.tar.gz
