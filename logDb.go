@@ -316,6 +316,8 @@ func (t *LogDb) prepareQueries() error {
 			AND src_ip != ""
 		GROUP BY 
 		    src_ip
+		HAVING
+		    reqs >= 5
 		ORDER BY
 		    reqs DESC
 	`)
@@ -338,6 +340,8 @@ func (t *LogDb) prepareQueries() error {
 			AND user != ""
 		GROUP BY 
 		    user
+		HAVING
+		    reqs >= 5
 		ORDER BY
 		    reqs DESC
 	`)
@@ -360,6 +364,8 @@ func (t *LogDb) prepareQueries() error {
 			AND dest_host != ""
 		GROUP BY 
 		    dest_host
+		HAVING
+		    reqs >= 5
 		ORDER BY
 		    reqs DESC
 	`)

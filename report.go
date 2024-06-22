@@ -71,7 +71,11 @@ func (t *LogReporter) GenerateReport() (string, error) {
 }
 
 func (t *LogReporter) loadTemplates() error {
-	tmpl, err := template.New("").ParseGlob("templates/*.tmpl")
+	tmpl, err := template.New("").Funcs(template.FuncMap{
+		"attr": func(s string) template.HTMLAttr {
+			return template.HTMLAttr(s)
+		},
+	}).ParseGlob("templates/*.tmpl")
 	if err != nil {
 		return err
 	}
