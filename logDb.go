@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -11,10 +12,14 @@ import (
 )
 
 type LogDb struct {
-	db               *sql.DB
-	insertQuery      *sql.Stmt
-	selectSrcIpQuery *sql.Stmt
-	selectUsersQuery *sql.Stmt
+	db                        *sql.DB
+	insertQuery               *sql.Stmt
+	selectSrcIpQuery          *sql.Stmt
+	selectUsersQuery          *sql.Stmt
+	selectDestHostsQuery      *sql.Stmt
+	insertKvDataValueQuery    *sql.Stmt
+	selectKvDataStrValueQuery *sql.Stmt
+	selectKvDataIntValueQuery *sql.Stmt
 }
 
 type BasicGroupReportData struct {
@@ -34,6 +39,11 @@ type SrcIpReportData struct {
 type UsersReportData struct {
 	BasicGroupReportData
 	User string
+}
+
+type DestHostsReportData struct {
+	BasicGroupReportData
+	DestHost string
 }
 
 const QueryTimeout = 10 * time.Second
@@ -111,6 +121,54 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	return items, nil
 }
 
+func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancelFunc()
+
+	res, err := t.selectDestHostsQuery.QueryContext(ctx, fromId)
+	if err != nil {
+		return nil, fmt.Errorf("error when executing query: %s", err)
+	}
+
+	var items []DestHostsReportData
+	for res.Next() {
+		var curData DestHostsReportData
+		if err := res.Scan(&curData.DestHost, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
+			return nil, fmt.Errorf("error when fetching element: %s", err)
+		}
+		curData.FirstTime = time.Unix(int64(curData.FirstTs/1000), 0).UTC().Format(time.RFC3339)
+		curData.LastTime = time.Unix(int64(curData.LastTs/1000), 0).UTC().Format(time.RFC3339)
+		items = append(items, curData)
+	}
+
+	return items, nil
+}
+
+func (t *LogDb) SetLastId(lastId int) error {
+	if _, err := t.insertKvDataValueQuery.Exec("lastId", lastId); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *LogDb) GetLastId() (int, error) {
+	res := t.selectKvDataIntValueQuery.QueryRow("lastId")
+	err := res.Err()
+	if err != nil {
+		return 0, err
+	}
+
+	var lastId int
+	err = res.Scan(&lastId)
+	if err != nil && errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	} else if err != nil {
+		return 0, err
+	}
+
+	return lastId, nil
+}
+
 func (t *LogDb) Close() {
 	if err := t.db.Close(); err != nil {
 		log.Printf("WARN Close DB error: %s\n", err)
@@ -158,6 +216,7 @@ func (t *LogDb) initSchema() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS id_src_ip ON log_records (id, src_ip)`,
 		`CREATE INDEX IF NOT EXISTS id_user ON log_records (id, user)`,
+		`CREATE INDEX IF NOT EXISTS id_dest_host ON log_records (id, dest_host)`,
 
 		`REPLACE INTO kv_data (name, value) VALUES ("schema_version", "1")`,
 	}
@@ -244,6 +303,46 @@ func (t *LogDb) prepareQueries() error {
 		return err
 	}
 	t.selectUsersQuery = selectUsersQuery
+
+	selectHostsQuery, err := t.db.Prepare(`
+		SELECT 
+		    dest_host,
+		    COUNT(*) AS reqs,
+		    MAX(id) AS last_id,
+		    MIN(ts) AS first_ts,
+		    MAX(ts) AS last_ts
+		FROM 
+		    log_records
+		WHERE
+			id > ?
+			AND dest_host != ""
+		GROUP BY 
+		    dest_host
+		ORDER BY
+		    reqs DESC
+	`)
+	if err != nil {
+		return err
+	}
+	t.selectDestHostsQuery = selectHostsQuery
+
+	insertKvDataValueQuery, err := t.db.Prepare(`REPLACE INTO kv_data (name, value) VALUES (?, CAST(? AS TEXT))`)
+	if err != nil {
+		return err
+	}
+	t.insertKvDataValueQuery = insertKvDataValueQuery
+
+	selectKvDataStrValueQuery, err := t.db.Prepare(`SELECT value FROM kv_data WHERE name=? LIMIT 1`)
+	if err != nil {
+		return err
+	}
+	t.selectKvDataStrValueQuery = selectKvDataStrValueQuery
+
+	selectKvDataIntValueQuery, err := t.db.Prepare(`SELECT CAST(value AS INTEGER) FROM kv_data WHERE name=? LIMIT 1`)
+	if err != nil {
+		return err
+	}
+	t.selectKvDataIntValueQuery = selectKvDataIntValueQuery
 
 	return nil
 }

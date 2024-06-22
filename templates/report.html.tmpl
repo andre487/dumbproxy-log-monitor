@@ -36,3 +36,21 @@
         </tr>
     {{ end }}
 </table>
+
+<h2>Dest hosts</h2>
+<table>
+    <tr>
+        <th>Dest host</th>
+        <th>Requests</th>
+        <th>First seen</th>
+        <th>Last seen</th>
+    </tr>
+    {{ range .DestHostsData }}
+        <tr>
+            <td>{{ .DestHost }}</td>
+            <td>{{ .Reqs }}</td>
+            <td>{{ .FirstTime }}</td>
+            <td>{{ .LastTime }}</td>
+        </tr>
+    {{ end }}
+</table>
