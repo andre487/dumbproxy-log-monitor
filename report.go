@@ -28,9 +28,15 @@ func (t *LogReporter) GenerateReport() (string, error) {
 		return "", err
 	}
 
+	userData, err := t.db.GetUsersReportData(0)
+	if err != nil {
+		return "", err
+	}
+
 	tplWriter := bytes.NewBufferString("")
 	err = t.tmpl.ExecuteTemplate(tplWriter, "report.html.tmpl", map[string]any{
-		"SrcIpStats": srcIpData,
+		"SrcIpData": srcIpData,
+		"UserData":  userData,
 	})
 	if err != nil {
 		return "", err

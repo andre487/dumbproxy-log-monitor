@@ -1,5 +1,6 @@
 <!doctype html>
 <meta charset="utf8">
+
 <h2>Src IP stats</h2>
 <table>
     <tr>
@@ -8,9 +9,27 @@
         <th>First seen</th>
         <th>Last seen</th>
     </tr>
-    {{ range .SrcIpStats}}
+    {{ range .SrcIpData }}
         <tr>
             <td>{{ .SrcIp }}</td>
+            <td>{{ .Reqs }}</td>
+            <td>{{ .FirstTime }}</td>
+            <td>{{ .LastTime }}</td>
+        </tr>
+    {{ end }}
+</table>
+
+<h2>User stats</h2>
+<table>
+    <tr>
+        <th>User</th>
+        <th>Requests</th>
+        <th>First seen</th>
+        <th>Last seen</th>
+    </tr>
+    {{ range .UserData }}
+        <tr>
+            <td>{{ .User }}</td>
             <td>{{ .Reqs }}</td>
             <td>{{ .FirstTime }}</td>
             <td>{{ .LastTime }}</td>
