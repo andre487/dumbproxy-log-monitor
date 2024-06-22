@@ -23,7 +23,11 @@ jobs:
         run: go build -v -o ./build/ .
 
       - name: Create bundle
-        run: cp -r templates build && cd build && tar -czvf dumbproxy-log-monitor-linux-x86_64.tar.gz .
+        run: |
+          set -e
+          cp -r templates build 
+          cd build 
+          tar -czvf dumbproxy-log-monitor-linux-x86_64.tar.gz dumbproxy-log-monitor templates
 
       - name: Release
         uses: softprops/action-gh-release@v2

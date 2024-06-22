@@ -17,14 +17,8 @@ jobs:
       with:
         go-version: '1.22'
 
+    - name: Build
+      run: go build -v ./...
+
     - name: Test
       run: go test -v ./...
-
-    - name: Build
-      run: go build -v -o ./build/ .
-
-    - name: Build bundle
-      run: cp -r templates build && cd build && tar -czvf dumbproxy-log-monitor.tar.gz .
-
-    - name: See files
-      run: tar -tf build/dumbproxy-log-monitor.tar.gz
