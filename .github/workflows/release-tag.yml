@@ -33,4 +33,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/dumbproxy-log-monitor-linux-x86_64.tar.gz
-          token: "{{ secrets.GH_TOKEN }}"
+          token: "${{ secrets.GH_TOKEN }}"
