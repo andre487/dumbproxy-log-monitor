@@ -1,0 +1,31 @@
+name: Create release for a tag
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Test
+        run: go test -v ./...
+
+      - name: Build
+        run: go build -v -o ./build/ .
+
+      - name: Create bundle
+        run: cp -r templates build && cd build && tar -czvf dumbproxy-log-monitor-linux-x86_64.tar.gz .
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/dumbproxy-log-monitor-linux-x86_64.tar.gz
