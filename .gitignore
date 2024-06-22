@@ -24,4 +24,5 @@ go.work.sum
 # Differet things
 .idea
 *.iml
+data
 secrets
