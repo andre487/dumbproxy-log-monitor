@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -80,7 +81,10 @@ func (t *Scheduler) ScheduleExactTime(jobEt SchedulerJobExactTimeDescription) er
 	return nil
 }
 
-func (t *Scheduler) Run() {
+func (t *Scheduler) Run(wg *sync.WaitGroup) {
+	defer log.Println("INFO Scheduler is finished")
+	defer wg.Done()
+
 	for t.running {
 		time.Sleep(t.scanInterval)
 

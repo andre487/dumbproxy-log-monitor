@@ -4,17 +4,15 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
-	"time"
 )
 
 type LogReporter struct {
-	db             *LogDb
-	reportInterval time.Duration
-	tmpl           *template.Template
+	db   *LogDb
+	tmpl *template.Template
 }
 
-func NewLogReporter(db *LogDb, reportInterval time.Duration) (*LogReporter, error) {
-	res := &LogReporter{db: db, reportInterval: reportInterval}
+func NewLogReporter(db *LogDb) (*LogReporter, error) {
+	res := &LogReporter{db: db}
 	err := res.loadTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("error when loading templates: %s", err)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -206,8 +207,11 @@ func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 	return nil
 }
 
-func (t *LogDb) WriteRecordsFromChannel(ch chan *LogLineData) {
-	for item := range ch {
+func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
+	defer log.Println("INFO WriteRecordsFromChannel is finished")
+	defer wg.Done()
+
+	for item := range logCh {
 		_, err := t.insertQuery.Exec(
 			time.Now().UnixMilli(),
 			item.LogLineType,
@@ -221,7 +225,7 @@ func (t *LogDb) WriteRecordsFromChannel(ch chan *LogLineData) {
 		)
 
 		if err != nil {
-			log.Fatalf("ERROR Can not insert data: %s\n", err)
+			log.Printf("ERROR Can not insert data: %s\n", err)
 		}
 	}
 }

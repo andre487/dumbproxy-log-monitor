@@ -2,11 +2,15 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path"
 	"regexp"
 	"strconv"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -21,6 +25,7 @@ type cliArgs struct {
 	reportHour   int
 	reportMinute int
 	reportSecond int
+	printReport  bool
 }
 
 func main() {
@@ -39,12 +44,8 @@ func main() {
 		JournalDCommand: args.logCmd,
 		ExecDir:         args.logCmdDir,
 	}))
-	defer reader.Stop()
-
 	scheduler := Must1(NewScheduler(db, 1*time.Second))
-	defer scheduler.Stop()
-
-	reporter := Must1(NewLogReporter(db, 10*time.Minute))
+	reporter := Must1(NewLogReporter(db))
 
 	Must0(
 		scheduler.ScheduleExactTime(SchedulerJobExactTimeDescription{
@@ -58,14 +59,17 @@ func main() {
 					return err
 				}
 
-				if mailer == nil {
-					log.Printf("Report:\n%s\n", report)
-				} else {
+				if mailer != nil {
 					if err := mailer.SendMessage(args.reportMail, "Proxy usage report", report); err != nil {
 						return err
 					}
 					log.Printf("INFO Report was successfully sent to %s\n", args.reportMail)
 				}
+
+				if args.printReport {
+					fmt.Printf("==========\nReport:\n%s\n==========\n", report)
+				}
+
 				return nil
 			},
 		}),
@@ -81,23 +85,35 @@ func main() {
 		},
 	})
 
-	ch := make(chan *LogLineData)
-	go reader.ReadLogStreamToChannel(ch)
-	go db.WriteRecordsFromChannel(ch)
-	go scheduler.Run()
+	var workersGroup sync.WaitGroup
+	logChan := make(chan *LogLineData)
+	go reader.ReadLogStreamToChannel(logChan, &workersGroup)
+	go db.WriteRecordsFromChannel(logChan, &workersGroup)
+	go scheduler.Run(&workersGroup)
+	workersGroup.Add(3)
 
-	time.Sleep(2 * time.Hour)
-	log.Println("Reading finished")
+	stopSignalChan := make(chan os.Signal, 1)
+	signal.Notify(stopSignalChan, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		sig := <-stopSignalChan
+		log.Printf("INFO Stopping on signal %v\n", sig)
+		reader.Stop()
+		scheduler.Stop()
+	}()
+
+	workersGroup.Wait()
+	log.Println("INFO Work is finished")
 }
 
 func getArgs() cliArgs {
 	var args cliArgs
-	flag.StringVar(&args.dbPath, "db-path", "/tmp/dumbproxy-log-monitor-test.db", "DB path")
-	flag.StringVar(&args.logCmd, "log-cmd", "sudo journald -fu dumbproxy.service", "CMD for logs")
-	flag.StringVar(&args.logCmdDir, "log-cmd-dir", ".", "CWD for log CMD")
-	flag.StringVar(&args.reportTime, "report-time", "22:00:00", "Report UTC time in format 22:00:00")
-	flag.StringVar(&args.reportMail, "report-mail", "", "Email to send reports")
-	flag.StringVar(&args.mailerConfigPath, "mailer-config", "secrets/mailer.json", "Config for mailer")
+	flag.StringVar(&args.dbPath, "dbPath", "/tmp/dumbproxy-log-monitor-test.db", "DB path")
+	flag.StringVar(&args.logCmd, "logCmd", "sudo journald -fu dumbproxy.service", "CMD for logs")
+	flag.StringVar(&args.logCmdDir, "logCmdDir", ".", "CWD for log CMD")
+	flag.StringVar(&args.reportTime, "reportTime", "22:00:00", "Report UTC time in format 22:00:00")
+	flag.StringVar(&args.reportMail, "reportMail", "", "Email to send reports")
+	flag.StringVar(&args.mailerConfigPath, "mailerConfig", "secrets/mailer.json", "Config for mailer")
+	flag.BoolVar(&args.printReport, "printReport", false, "Print report to STDOUT")
 	flag.Parse()
 	return args
 }

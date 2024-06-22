@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -21,7 +22,7 @@ type LogReaderParams struct {
 
 type LogReader struct {
 	LogReaderParams
-	stopped bool
+	running bool
 	cmd     *exec.Cmd
 	stdout  io.ReadCloser
 }
@@ -34,27 +35,36 @@ func NewLogReader(params LogReaderParams) (*LogReader, error) {
 		params.ProcessRestartLimit = 3
 	}
 
-	res := &LogReader{LogReaderParams: params}
+	res := &LogReader{LogReaderParams: params, running: true}
 	if err := res.launchProcess(); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func (t *LogReader) ReadLogStreamToChannel(ch chan *LogLineData) {
+func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
+	defer log.Println("INFO ReadLogStreamToChannel is finished")
+	defer close(logCh)
+	defer wg.Done()
+
 	runNum := 0
-	for {
+	for t.running {
 		scanner := bufio.NewScanner(t.stdout)
-		for scanner.Scan() {
+		for t.running && scanner.Scan() {
 			data, err := ParseLogLine(scanner.Text())
 			if err == nil {
-				ch <- data
+				logCh <- data
 				runNum = 0
 				t.lastHandledTime = time.Now().UTC()
 			} else {
 				log.Printf("WARN Parse log error: %s", err)
 			}
 		}
+
+		if !t.running {
+			return
+		}
+
 		if err := scanner.Err(); err != nil {
 			log.Printf("WARN Scanner close error: %s", err)
 		}
@@ -78,11 +88,10 @@ func (t *LogReader) ReadLogStreamToChannel(ch chan *LogLineData) {
 			break
 		}
 	}
-	close(ch)
 }
 
 func (t *LogReader) Stop() {
-	t.stopped = true
+	t.running = false
 
 	var resErr error
 	if t.stdout != nil {
@@ -107,7 +116,7 @@ func (t *LogReader) Stop() {
 }
 
 func (t *LogReader) IsAlive() bool {
-	return !t.stopped
+	return t.running
 }
 
 func (t *LogReader) launchProcess() error {
