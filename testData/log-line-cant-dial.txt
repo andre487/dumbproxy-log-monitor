@@ -1,0 +1,1 @@
+Jun 18 11:18:52 p487-2-am.jethelix.ru dumbproxy[96234]: PROXY   : 2024/06/18 11:18:52 handler.go:51: ERROR    Can't satisfy CONNECT request: dial tcp [2a02:6b8::5d7]:443: connect: network is unreachable

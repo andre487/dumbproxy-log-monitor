@@ -6,6 +6,7 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -88,9 +89,15 @@ func ParseLogLine(logLine string) (*LogLineData, error) {
 	}
 
 	if resMap := parseLogLineWithRe(logLineCantDialRe, logLine); resMap != nil {
+		host := resMap["host"]
+		if strings.HasSuffix(host, ":443") {
+			host = host[:len(host)-4]
+		} else if strings.HasSuffix(host, ":80") {
+			host = host[:len(host)-3]
+		}
 		return &LogLineData{
 			LogLineType: LogLineTypeCantDialError,
-			DestHost:    resMap["host"],
+			DestHost:    host,
 		}, nil
 	}
 

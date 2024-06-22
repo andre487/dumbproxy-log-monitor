@@ -107,14 +107,6 @@ func TestParseLogLineError(t *testing.T) {
 	assert.Contains(t, err.Error(), "wrong IP")
 }
 
-func readFileToString(filePath string) string {
-	logLineGeneral, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Fatalf("Read file %s error: %v", filePath, err)
-	}
-	return strings.TrimSpace(string(logLineGeneral))
-}
-
 func TestParseLogLine(t *testing.T) {
 	logLineGeneral := readFileToString("testData/log-line-general.txt")
 	logLineRequest := readFileToString("testData/log-line-request.txt")
@@ -135,4 +127,29 @@ func TestParseLogLine(t *testing.T) {
 	res, err = ParseLogLine("")
 	assert.Nil(t, res)
 	assert.ErrorIs(t, err, ErrorLogLineNotMatch)
+}
+
+func TestParseLogLineCantDial(t *testing.T) {
+	logLine := readFileToString("testData/log-line-cant-dial.txt")
+	res, err := ParseLogLine(logLine)
+	if err != nil {
+		t.Errorf("parse error: %v", err.Error())
+	}
+	assert.Equal(
+		t,
+		LogLineData{
+			LogLineType: LogLineTypeCantDialError,
+			DateTime:    time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC),
+			DestHost:    "[2a02:6b8::5d7]",
+		},
+		*res,
+	)
+}
+
+func readFileToString(filePath string) string {
+	logLineGeneral, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatalf("Read file %s error: %v", filePath, err)
+	}
+	return strings.TrimSpace(string(logLineGeneral))
 }
