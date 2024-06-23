@@ -70,7 +70,7 @@ func (t *LogDb) Init() error {
 }
 
 func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
-	log.Debugf("Executing GetSrcIpReportData(%d)", fromId)
+	log.Tracef("Executing GetSrcIpReportData(%d)", fromId)
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
@@ -101,7 +101,12 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error when executing GetSrcIpReportData query: %s", err)
 	}
-	defer AutoClose(res.Close)
+	defer func() {
+		log.Trace("Closing query for GetSrcIpReportData")
+		if err := res.Close(); err != nil {
+			log.Warnf("Unable to close query for GetSrcIpReportData: %s", err)
+		}
+	}()
 
 	var items []SrcIpReportData
 	for res.Next() {
@@ -118,7 +123,7 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 }
 
 func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
-	log.Debugf("Executing GetUsersReportData(%d)", fromId)
+	log.Tracef("Executing GetUsersReportData(%d)", fromId)
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
@@ -149,7 +154,12 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error when executing GetUsersReportData query: %s", err)
 	}
-	defer AutoClose(res.Close)
+	defer func() {
+		log.Trace("Closing query for GetUsersReportData")
+		if err := res.Close(); err != nil {
+			log.Warnf("Unable to close query for GetUsersReportData: %s", err)
+		}
+	}()
 
 	var items []UsersReportData
 	for res.Next() {
@@ -166,7 +176,7 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 }
 
 func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error) {
-	log.Debugf("Executing GetDestHostsReportData(%d)", fromId)
+	log.Tracef("Executing GetDestHostsReportData(%d)", fromId)
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
@@ -197,7 +207,12 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 	if err != nil {
 		return nil, fmt.Errorf("error when executing GetDestHostsReportData query: %s", err)
 	}
-	defer AutoClose(res.Close)
+	defer func() {
+		log.Trace("Closing query for GetDestHostsReportData")
+		if err := res.Close(); err != nil {
+			log.Warnf("Unable to close query for GetDestHostsReportData: %s", err)
+		}
+	}()
 
 	var items []DestHostsReportData
 	for res.Next() {
@@ -214,18 +229,18 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 }
 
 func (t *LogDb) SetLastId(lastId int) error {
-	log.Debugf("Executing SetLastId(%d)", lastId)
+	log.Tracef("Executing SetLastId(%d)", lastId)
 	key := "lastId"
 	return t.SetKvRecord(key, lastId)
 }
 
 func (t *LogDb) GetLastId() (int, error) {
-	log.Debug("Executing GetLastId()")
+	log.Trace("Executing GetLastId()")
 	return t.GetKvIntRecord("lastId")
 }
 
 func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
-	log.Debugf("Executing LogRecordsVacuumClean(%d)", maxAge)
+	log.Tracef("Executing LogRecordsVacuumClean(%d)", maxAge)
 	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
 	res, err := t.db.Exec(`DELETE FROM log_records WHERE ts < ?`, borderTs)
 	if err != nil {
@@ -235,7 +250,7 @@ func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 }
 
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
-	log.Debugf("Executing GetKvIntRecord(%s)", key)
+	log.Tracef("Executing GetKvIntRecord(%s)", key)
 
 	res := t.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM kv_data WHERE name=? LIMIT 1`, key)
 	err := res.Err()
@@ -255,7 +270,7 @@ func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 }
 
 func (t *LogDb) GetKvStrRecord(key string) (string, error) {
-	log.Debugf("Executing GetKvStrRecord(%s)", key)
+	log.Tracef("Executing GetKvStrRecord(%s)", key)
 
 	res := t.db.QueryRow(`SELECT value FROM kv_data WHERE name=? LIMIT 1`, key)
 	err := res.Err()
@@ -275,7 +290,7 @@ func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 }
 
 func (t *LogDb) SetKvRecord(key string, val interface{}) error {
-	log.Debugf("Executing SetKvRecord(%s, %v)", key, val)
+	log.Tracef("Executing SetKvRecord(%s, %v)", key, val)
 	if _, err := t.db.Exec(`REPLACE INTO kv_data (name, value) VALUES (?, CAST(? AS TEXT))`, key, val); err != nil {
 		return fmt.Errorf("unable to execute SetKvRecord query: %s", err)
 	}
@@ -283,7 +298,7 @@ func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 }
 
 func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
-	log.Debug("Executing WriteRecordsFromChannel(logCh, wg)")
+	log.Trace("Executing WriteRecordsFromChannel(logCh, wg)")
 
 	defer log.Infoln("WriteRecordsFromChannel is finished")
 	defer wg.Done()

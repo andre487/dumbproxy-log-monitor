@@ -33,7 +33,7 @@ type cliArgs struct {
 func main() {
 	args := getArgs()
 	handleArgs(&args)
-	setupLogger()
+	origLogLevel := setupLogger()
 
 	var mailer *Mailer
 	if args.reportMail != "" {
@@ -104,23 +104,36 @@ func main() {
 	workersGroup.Add(3)
 
 	stopSignalChan := make(chan os.Signal, 1)
-	reportSignalChan := make(chan os.Signal, 1)
+	usrSignalChan := make(chan os.Signal)
 	signal.Notify(stopSignalChan, syscall.SIGTERM, syscall.SIGINT)
-	signal.Notify(reportSignalChan, syscall.SIGUSR1, syscall.SIGUSR2)
+	signal.Notify(usrSignalChan, syscall.SIGUSR1, syscall.SIGUSR2)
 
 	go func() {
 		sig := <-stopSignalChan
 		log.Infof("Stopping on signal %v", sig)
-		close(reportSignalChan)
+		close(usrSignalChan)
 		reader.Stop()
 		scheduler.Stop()
 	}()
 
 	go func() {
-		for sig := range reportSignalChan {
-			log.Infof("Sending report on signal %v", sig)
-			if err := createReport(); err != nil {
-				log.Warnf("Error when creating report on signal: %s", err)
+		for sig := range usrSignalChan {
+			switch sig {
+			case syscall.SIGUSR1:
+				log.Infof("Sending report on signal %v", sig)
+				if err := createReport(); err != nil {
+					log.Warnf("Error when creating report on signal: %s", err)
+				}
+				break
+			case syscall.SIGUSR2:
+				if log.GetLevel() == log.TraceLevel {
+					log.Infof("Disabling tracing by signal %v", sig)
+					log.SetLevel(origLogLevel)
+				} else {
+					log.Infof("Enabling tracing by signal %v", sig)
+					log.SetLevel(log.TraceLevel)
+				}
+				break
 			}
 		}
 	}()
@@ -129,38 +142,42 @@ func main() {
 	log.Info("Work is finished")
 }
 
-func setupLogger() {
+func setupLogger() log.Level {
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp:          true,
 		TimestampFormat:        "2006-01-02 15:04:05",
 		DisableLevelTruncation: true,
 	})
 
+	var level log.Level
 	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
 	case "trace":
-		log.SetLevel(log.TraceLevel)
+		level = log.TraceLevel
 		break
 	case "debug":
-		log.SetLevel(log.DebugLevel)
+		level = log.DebugLevel
 		break
 	case "info":
-		log.SetLevel(log.InfoLevel)
+		level = log.InfoLevel
 		break
 	case "warn":
-		log.SetLevel(log.WarnLevel)
+		level = log.WarnLevel
 		break
 	case "error":
-		log.SetLevel(log.ErrorLevel)
+		level = log.ErrorLevel
 		break
 	case "fatal":
-		log.SetLevel(log.FatalLevel)
+		level = log.FatalLevel
 		break
 	case "panic":
-		log.SetLevel(log.PanicLevel)
+		level = log.PanicLevel
 		break
 	default:
-		log.SetLevel(log.InfoLevel)
+		level = log.InfoLevel
 	}
+	log.SetLevel(level)
+
+	return level
 }
 
 func getArgs() cliArgs {

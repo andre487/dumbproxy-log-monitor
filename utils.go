@@ -18,8 +18,7 @@ func Must1[T interface{}](arg T, err error) T {
 }
 
 func AutoClose(close func() error) {
-	err := close()
-	if err != nil {
+	if err := close(); err != nil {
 		log.Warnf("Error when closing: %s", err)
 	}
 }
