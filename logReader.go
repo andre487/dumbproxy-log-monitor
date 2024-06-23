@@ -36,6 +36,9 @@ func NewLogReader(params LogReaderParams) (*LogReader, error) {
 	}
 
 	res := &LogReader{LogReaderParams: params, running: true}
+	if res.lastHandledTime.IsZero() {
+		res.lastHandledTime = time.Unix(time.Now().Unix()-int64(7*24*time.Hour/time.Second), 0)
+	}
 	if err := res.launchProcess(); err != nil {
 		return nil, err
 	}
