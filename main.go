@@ -151,7 +151,7 @@ func setupLogger() {
 func getArgs() cliArgs {
 	var args cliArgs
 	flag.StringVar(&args.dbPath, "dbPath", "/tmp/dumbproxy-log-monitor-test.db", "DB path")
-	flag.StringVar(&args.logCmd, "logCmd", "sudo journald -fu dumbproxy.service", "CMD for logs")
+	flag.StringVar(&args.logCmd, "logCmd", "sudo journalctl -fu dumbproxy.service", "CMD for logs")
 	flag.StringVar(&args.logCmdDir, "logCmdDir", ".", "CWD for log CMD")
 	flag.StringVar(&args.reportTime, "reportTime", "22:00:00", "Report UTC time in format 22:00:00")
 	flag.StringVar(&args.reportMail, "reportMail", "", "Email to send reports")
