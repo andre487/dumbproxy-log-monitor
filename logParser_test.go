@@ -1,13 +1,13 @@
 package main
 
 import (
-	"log"
 	"net"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 

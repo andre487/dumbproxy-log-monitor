@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	log "github.com/sirupsen/logrus"
 )
 
 type LogDb struct {
@@ -208,7 +208,7 @@ func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 }
 
 func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
-	defer log.Println("INFO WriteRecordsFromChannel is finished")
+	defer log.Infoln("WriteRecordsFromChannel is finished")
 	defer wg.Done()
 
 	for item := range logCh {
@@ -225,14 +225,14 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGr
 		)
 
 		if err != nil {
-			log.Printf("ERROR Can not insert data: %s\n", err)
+			log.Errorf("Can not insert data: %s", err)
 		}
 	}
 }
 
 func (t *LogDb) Close() {
 	if err := t.db.Close(); err != nil {
-		log.Printf("WARN Close DB error: %s\n", err)
+		log.Warnf("Close DB error: %s", err)
 	}
 }
 
@@ -284,7 +284,7 @@ func (t *LogDb) checkSchemaVersion() error {
 	}
 
 	if version != 1 {
-		log.Fatalf("ERROR Version is incorrect: %d\n", version)
+		log.Errorf("Version is incorrect: %d", version)
 	}
 
 	return nil

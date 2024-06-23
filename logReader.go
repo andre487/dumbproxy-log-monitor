@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-multierror"
+	log "github.com/sirupsen/logrus"
 )
 
 type LogReaderParams struct {
@@ -43,7 +43,7 @@ func NewLogReader(params LogReaderParams) (*LogReader, error) {
 }
 
 func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
-	defer log.Println("INFO ReadLogStreamToChannel is finished")
+	defer log.Infoln("ReadLogStreamToChannel is finished")
 	defer close(logCh)
 	defer wg.Done()
 
@@ -57,7 +57,7 @@ func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.Wai
 				runNum = 0
 				t.lastHandledTime = time.Now().UTC()
 			} else {
-				log.Printf("WARN Parse log error: %s", err)
+				log.Warnf("Parse log error: %s", err)
 			}
 		}
 
@@ -66,12 +66,12 @@ func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.Wai
 		}
 
 		if err := scanner.Err(); err != nil {
-			log.Printf("WARN Scanner close error: %s", err)
+			log.Warnf("Scanner close error: %s", err)
 		}
 
 		_, waitErr := t.cmd.Process.Wait()
 		if waitErr != nil {
-			log.Printf("WARN Wait process error: %s", waitErr)
+			log.Warnf("Wait process error: %s", waitErr)
 		}
 
 		runNum++
@@ -79,12 +79,12 @@ func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.Wai
 			break
 		}
 
-		log.Printf("INFO Waiting for timeout before restarting log reader")
+		log.Infoln("Waiting for timeout before restarting log reader")
 		time.Sleep(2 * time.Second)
-		log.Printf("INFO Restarting log reader")
+		log.Infoln("Restarting log reader")
 
 		if err := t.launchProcess(); err != nil {
-			log.Printf("ERROR Restart process error: %s", err)
+			log.Errorf("Restart process error: %s", err)
 			break
 		}
 	}
@@ -111,7 +111,7 @@ func (t *LogReader) Stop() {
 	}
 
 	if resErr != nil {
-		log.Printf("WARN Stop reader error: %s", resErr)
+		log.Warnf("Stop reader error: %s", resErr)
 	}
 }
 
@@ -122,7 +122,7 @@ func (t *LogReader) IsAlive() bool {
 func (t *LogReader) launchProcess() error {
 	cmdParts := strings.Split(t.JournalDCommand, " ")
 	cmdParts = append(cmdParts, "--since", t.lastHandledTime.Format(time.RFC3339))
-	log.Printf("INFO Launching log process: %v", cmdParts)
+	log.Infof("Launching log process: %v", cmdParts)
 
 	cmd := exec.Command(cmdParts[0], cmdParts[1:]...)
 	cmd.Dir = t.ExecDir

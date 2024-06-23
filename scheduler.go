@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Scheduler struct {
@@ -82,7 +83,7 @@ func (t *Scheduler) ScheduleExactTime(jobEt SchedulerJobExactTimeDescription) er
 }
 
 func (t *Scheduler) Run(wg *sync.WaitGroup) {
-	defer log.Println("INFO Scheduler is finished")
+	defer log.Info("Scheduler is finished")
 	defer wg.Done()
 
 	for t.running {
@@ -101,18 +102,18 @@ func (t *Scheduler) executeTask(job SchedulerJobDescription, nowDuration time.Du
 	lastExecKey := createTaskLastExecTimeKey(taskName)
 	lastExecTime, err := t.db.GetKvIntRecord(lastExecKey)
 	if err != nil {
-		log.Printf("WARN Can't get last exec time for %s: %s\n", lastExecKey, err)
+		log.Warnf("Can't get last exec time for %s: %s", lastExecKey, err)
 		return
 	}
 
 	lastExecDuration := time.Duration(lastExecTime) * time.Second
 	if nowDuration-lastExecDuration > job.Interval {
-		log.Printf("INFO Executing %s\n", taskName)
+		log.Infof("Executing %s\n", taskName)
 		if err := job.Task(); err != nil {
-			log.Printf("WARN Can't exec task %s: %s", lastExecKey, err)
+			log.Warnf("WARN Can't exec task %s: %s", lastExecKey, err)
 		}
 		if err := t.db.SetKvRecord(lastExecKey, nowDuration/time.Second); err != nil {
-			log.Printf("WARN Can't update last exec time for task %s: %s\n", lastExecKey, err)
+			log.Warnf("Can't update last exec time for task %s: %s", lastExecKey, err)
 		}
 	}
 }

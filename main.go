@@ -3,15 +3,17 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type cliArgs struct {
@@ -31,6 +33,7 @@ type cliArgs struct {
 func main() {
 	args := getArgs()
 	handleArgs(&args)
+	setupLogger()
 
 	var mailer *Mailer
 	if args.reportMail != "" {
@@ -63,7 +66,7 @@ func main() {
 					if err := mailer.SendMessage(args.reportMail, "Proxy usage report", report); err != nil {
 						return err
 					}
-					log.Printf("INFO Report was successfully sent to %s\n", args.reportMail)
+					log.Infof("Report was successfully sent to %s", args.reportMail)
 				}
 
 				if args.printReport {
@@ -80,7 +83,7 @@ func main() {
 		Interval: 1 * time.Hour,
 		Task: func() error {
 			recsDeleted, err := db.LogRecordsVacuumClean(48 * time.Hour)
-			log.Printf("INFO Vacuum clean records deleted: %d\n", recsDeleted)
+			log.Infof("Vacuum clean records deleted: %d", recsDeleted)
 			return err
 		},
 	})
@@ -96,13 +99,47 @@ func main() {
 	signal.Notify(stopSignalChan, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		sig := <-stopSignalChan
-		log.Printf("INFO Stopping on signal %v\n", sig)
+		log.Infof("Stopping on signal %v", sig)
 		reader.Stop()
 		scheduler.Stop()
 	}()
 
 	workersGroup.Wait()
-	log.Println("INFO Work is finished")
+	log.Info("Work is finished")
+}
+
+func setupLogger() {
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp:          true,
+		TimestampFormat:        "2006-01-02 15:04:05",
+		DisableLevelTruncation: true,
+	})
+
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "trace":
+		log.SetLevel(log.TraceLevel)
+		break
+	case "debug":
+		log.SetLevel(log.DebugLevel)
+		break
+	case "info":
+		log.SetLevel(log.InfoLevel)
+		break
+	case "warn":
+		log.SetLevel(log.WarnLevel)
+		break
+	case "error":
+		log.SetLevel(log.ErrorLevel)
+		break
+	case "fatal":
+		log.SetLevel(log.FatalLevel)
+		break
+	case "panic":
+		log.SetLevel(log.PanicLevel)
+		break
+	default:
+		log.SetLevel(log.InfoLevel)
+	}
 }
 
 func getArgs() cliArgs {
@@ -125,7 +162,7 @@ func handleArgs(args *cliArgs) {
 	dbDir := path.Dir(args.dbPath)
 	if _, err := os.Stat(dbDir); err != nil && os.IsNotExist(err) {
 		if err := os.MkdirAll(dbDir, 0755); err != nil {
-			log.Fatalf("Could not create DB dir: %v\n", err)
+			log.Fatalf("Could not create DB dir: %v", err)
 		}
 	}
 
@@ -135,13 +172,13 @@ func handleArgs(args *cliArgs) {
 
 	matches := Must1(regexp.Compile("^(-?\\d{1,2}):(-?\\d{1,2}):(-?\\d{1,2})$")).FindStringSubmatch(args.reportTime)
 	if len(matches) != 4 {
-		log.Fatalf("Invalid value for -report-time: %s\n", args.reportTime)
+		log.Fatalf("Invalid value for -report-time: %s", args.reportTime)
 	}
 	args.reportHour = Must1(strconv.Atoi(matches[1]))
 	args.reportMinute = Must1(strconv.Atoi(matches[2]))
 	args.reportSecond = Must1(strconv.Atoi(matches[3]))
 
 	if _, err := os.Stat(args.mailerConfigPath); err != nil {
-		log.Fatalf("ERROR: Unable to read -mailer-config: %s\n", err)
+		log.Fatalf("Unable to read -mailer-config: %s", err)
 	}
 }
