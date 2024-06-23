@@ -24,10 +24,11 @@ type cliArgs struct {
 	reportMail       string
 	mailerConfigPath string
 
-	reportHour   int
-	reportMinute int
-	reportSecond int
-	printReport  bool
+	reportHour       int
+	reportMinute     int
+	reportSecond     int
+	printReport      bool
+	scheduleInterval time.Duration
 }
 
 func main() {
@@ -47,7 +48,7 @@ func main() {
 		JournalDCommand: args.logCmd,
 		ExecDir:         args.logCmdDir,
 	}))
-	scheduler := Must1(NewScheduler(db, 1*time.Second))
+	scheduler := Must1(NewScheduler(db, args.scheduleInterval))
 	reporter := Must1(NewLogReporter(db))
 
 	createReport := func() error {
@@ -187,6 +188,7 @@ func getArgs() cliArgs {
 	flag.StringVar(&args.logCmdDir, "logCmdDir", ".", "CWD for log CMD")
 	flag.StringVar(&args.reportTime, "reportTime", "22:00:00", "Report UTC time in format 22:00:00")
 	flag.StringVar(&args.reportMail, "reportMail", "", "Email to send reports")
+	flag.DurationVar(&args.scheduleInterval, "scheduleInterval", 10*time.Second, "Interval for scheduler tasks scan")
 	flag.StringVar(&args.mailerConfigPath, "mailerConfig", "secrets/mailer.json", "Config for mailer")
 	flag.BoolVar(&args.printReport, "printReport", false, "Print report to STDOUT")
 	flag.Parse()
@@ -218,5 +220,11 @@ func handleArgs(args *cliArgs) {
 
 	if _, err := os.Stat(args.mailerConfigPath); err != nil {
 		log.Fatalf("Unable to read -mailer-config: %s", err)
+	}
+
+	scheduleMinInterval := 2 * time.Second
+	if args.scheduleInterval < scheduleMinInterval {
+		log.Warnf("-scheduleInterval is too small (%s), falling back to %s", args.scheduleInterval, scheduleMinInterval)
+		args.scheduleInterval = scheduleMinInterval
 	}
 }
