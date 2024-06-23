@@ -63,7 +63,13 @@ func main() {
 				}
 
 				if mailer != nil {
-					if err := mailer.SendMessage(args.reportMail, "Proxy usage report", report); err != nil {
+					hostname, err := os.Hostname()
+					if err != nil {
+						log.Warnf("Unable to get hostname: %s", err)
+						hostname = "Unknown host"
+					}
+					subject := hostname + ": Proxy usage report"
+					if err := mailer.SendMessage(args.reportMail, subject, report); err != nil {
 						return err
 					}
 					log.Infof("Report was successfully sent to %s", args.reportMail)
