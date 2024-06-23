@@ -58,7 +58,7 @@ func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.Wai
 			if err == nil {
 				logCh <- data
 				runNum = 0
-				t.lastHandledTime = time.Now().UTC()
+				t.lastHandledTime = time.Now()
 			} else {
 				log.Warnf("Parse log error: %s", err)
 			}
