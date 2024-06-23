@@ -13,15 +13,7 @@ import (
 )
 
 type LogDb struct {
-	db                        *sql.DB
-	insertQuery               *sql.Stmt
-	selectSrcIpQuery          *sql.Stmt
-	selectUsersQuery          *sql.Stmt
-	selectDestHostsQuery      *sql.Stmt
-	insertKvDataValueQuery    *sql.Stmt
-	selectKvDataStrValueQuery *sql.Stmt
-	selectKvDataIntValueQuery *sql.Stmt
-	vacuumCleanLogRecords     *sql.Stmt
+	db *sql.DB
 }
 
 type BasicGroupReportData struct {
@@ -74,14 +66,36 @@ func (t *LogDb) Init() error {
 		return err
 	}
 
-	return t.prepareQueries()
+	return nil
 }
 
 func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
-	res, err := t.selectSrcIpQuery.QueryContext(ctx, fromId)
+	res, err := t.db.QueryContext(
+		ctx,
+		`
+		SELECT 
+		    src_ip AS ip,
+		    COUNT(*) AS reqs,
+		    MAX(id) AS last_id,
+		    MIN(ts) AS first_ts,
+		    MAX(ts) AS last_ts
+		FROM 
+		    log_records
+		WHERE
+			id > ?
+			AND src_ip != ""
+		GROUP BY 
+		    src_ip
+		HAVING
+		    reqs >= 5
+		ORDER BY
+		    reqs DESC
+		`,
+		fromId,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error when executing query: %s", err)
 	}
@@ -104,7 +118,29 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
-	res, err := t.selectUsersQuery.QueryContext(ctx, fromId)
+	res, err := t.db.QueryContext(
+		ctx,
+		`
+		SELECT 
+		    user,
+		    COUNT(*) AS reqs,
+		    MAX(id) AS last_id,
+		    MIN(ts) AS first_ts,
+		    MAX(ts) AS last_ts
+		FROM 
+		    log_records
+		WHERE
+			id > ?
+			AND user != ""
+		GROUP BY 
+		    user
+		HAVING
+		    reqs >= 5
+		ORDER BY
+		    reqs DESC
+		`,
+		fromId,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error when executing query: %s", err)
 	}
@@ -127,7 +163,29 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
-	res, err := t.selectDestHostsQuery.QueryContext(ctx, fromId)
+	res, err := t.db.QueryContext(
+		ctx,
+		`
+		SELECT 
+		    dest_host,
+		    COUNT(*) AS reqs,
+		    MAX(id) AS last_id,
+		    MIN(ts) AS first_ts,
+		    MAX(ts) AS last_ts
+		FROM 
+		    log_records
+		WHERE
+			id > ?
+			AND dest_host != ""
+		GROUP BY 
+		    dest_host
+		HAVING
+		    reqs >= 5
+		ORDER BY
+		    reqs DESC
+		`,
+		fromId,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error when executing query: %s", err)
 	}
@@ -157,7 +215,7 @@ func (t *LogDb) GetLastId() (int, error) {
 
 func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
-	res, err := t.vacuumCleanLogRecords.Exec(borderTs)
+	res, err := t.db.Exec(`DELETE FROM log_records WHERE ts < ?`, borderTs)
 	if err != nil {
 		return 0, err
 	}
@@ -165,7 +223,7 @@ func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 }
 
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
-	res := t.selectKvDataIntValueQuery.QueryRow(key)
+	res := t.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM kv_data WHERE name=? LIMIT 1`, key)
 	err := res.Err()
 	if err != nil {
 		return 0, err
@@ -183,7 +241,7 @@ func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 }
 
 func (t *LogDb) GetKvStrRecord(key string) (string, error) {
-	res := t.selectKvDataStrValueQuery.QueryRow(key)
+	res := t.db.QueryRow(`SELECT value FROM kv_data WHERE name=? LIMIT 1`, key)
 	err := res.Err()
 	if err != nil {
 		return "", err
@@ -201,7 +259,7 @@ func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 }
 
 func (t *LogDb) SetKvRecord(key string, val interface{}) error {
-	if _, err := t.insertKvDataValueQuery.Exec(key, val); err != nil {
+	if _, err := t.db.Exec(`REPLACE INTO kv_data (name, value) VALUES (?, CAST(? AS TEXT))`, key, val); err != nil {
 		return err
 	}
 	return nil
@@ -212,7 +270,13 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGr
 	defer wg.Done()
 
 	for item := range logCh {
-		_, err := t.insertQuery.Exec(
+		_, err := t.db.Exec(
+			`
+			INSERT INTO
+				log_records (ts, log_type, date_time, logger_name, level, src_ip, dest_ip, dest_host, user)
+			VALUES 
+				(?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
 			time.Now().UnixMilli(),
 			item.LogLineType,
 			item.DateTime.Format(time.RFC3339),
@@ -286,117 +350,6 @@ func (t *LogDb) checkSchemaVersion() error {
 	if version != 1 {
 		log.Errorf("Version is incorrect: %d", version)
 	}
-
-	return nil
-}
-
-func (t *LogDb) prepareQueries() error {
-	insertQuery, err := t.db.Prepare(`
-		INSERT INTO
-			log_records (ts, log_type, date_time, logger_name, level, src_ip, dest_ip, dest_host, user)
-		VALUES 
-		    (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return err
-	}
-	t.insertQuery = insertQuery
-
-	selectSrcIpQuery, err := t.db.Prepare(`
-		SELECT 
-		    src_ip AS ip,
-		    COUNT(*) AS reqs,
-		    MAX(id) AS last_id,
-		    MIN(ts) AS first_ts,
-		    MAX(ts) AS last_ts
-		FROM 
-		    log_records
-		WHERE
-			id > ?
-			AND src_ip != ""
-		GROUP BY 
-		    src_ip
-		HAVING
-		    reqs >= 5
-		ORDER BY
-		    reqs DESC
-	`)
-	if err != nil {
-		return err
-	}
-	t.selectSrcIpQuery = selectSrcIpQuery
-
-	selectUsersQuery, err := t.db.Prepare(`
-		SELECT 
-		    user,
-		    COUNT(*) AS reqs,
-		    MAX(id) AS last_id,
-		    MIN(ts) AS first_ts,
-		    MAX(ts) AS last_ts
-		FROM 
-		    log_records
-		WHERE
-			id > ?
-			AND user != ""
-		GROUP BY 
-		    user
-		HAVING
-		    reqs >= 5
-		ORDER BY
-		    reqs DESC
-	`)
-	if err != nil {
-		return err
-	}
-	t.selectUsersQuery = selectUsersQuery
-
-	selectHostsQuery, err := t.db.Prepare(`
-		SELECT 
-		    dest_host,
-		    COUNT(*) AS reqs,
-		    MAX(id) AS last_id,
-		    MIN(ts) AS first_ts,
-		    MAX(ts) AS last_ts
-		FROM 
-		    log_records
-		WHERE
-			id > ?
-			AND dest_host != ""
-		GROUP BY 
-		    dest_host
-		HAVING
-		    reqs >= 5
-		ORDER BY
-		    reqs DESC
-	`)
-	if err != nil {
-		return err
-	}
-	t.selectDestHostsQuery = selectHostsQuery
-
-	insertKvDataValueQuery, err := t.db.Prepare(`REPLACE INTO kv_data (name, value) VALUES (?, CAST(? AS TEXT))`)
-	if err != nil {
-		return err
-	}
-	t.insertKvDataValueQuery = insertKvDataValueQuery
-
-	selectKvDataStrValueQuery, err := t.db.Prepare(`SELECT value FROM kv_data WHERE name=? LIMIT 1`)
-	if err != nil {
-		return err
-	}
-	t.selectKvDataStrValueQuery = selectKvDataStrValueQuery
-
-	selectKvDataIntValueQuery, err := t.db.Prepare(`SELECT CAST(value AS INTEGER) FROM kv_data WHERE name=? LIMIT 1`)
-	if err != nil {
-		return err
-	}
-	t.selectKvDataIntValueQuery = selectKvDataIntValueQuery
-
-	vacuumCleanLogRecords, err := t.db.Prepare(`DELETE FROM log_records WHERE ts < ?`)
-	if err != nil {
-		return err
-	}
-	t.vacuumCleanLogRecords = vacuumCleanLogRecords
 
 	return nil
 }
