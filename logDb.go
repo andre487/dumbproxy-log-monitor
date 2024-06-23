@@ -99,6 +99,7 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error when executing query: %s", err)
 	}
+	defer AutoClose(res.Close)
 
 	var items []SrcIpReportData
 	for res.Next() {
@@ -144,6 +145,7 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error when executing query: %s", err)
 	}
+	defer AutoClose(res.Close)
 
 	var items []UsersReportData
 	for res.Next() {
@@ -189,6 +191,7 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 	if err != nil {
 		return nil, fmt.Errorf("error when executing query: %s", err)
 	}
+	defer AutoClose(res.Close)
 
 	var items []DestHostsReportData
 	for res.Next() {
