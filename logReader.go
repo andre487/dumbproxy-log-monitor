@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -17,7 +16,7 @@ type LogReaderParams struct {
 	JournalDCommand     string
 	ExecDir             string
 	ProcessRestartLimit int
-	lastHandledTime     time.Time
+	LastHandledTime     time.Time
 }
 
 type LogReader struct {
@@ -36,19 +35,15 @@ func NewLogReader(params LogReaderParams) (*LogReader, error) {
 	}
 
 	res := &LogReader{LogReaderParams: params, running: true}
-	if res.lastHandledTime.IsZero() {
-		res.lastHandledTime = time.Unix(time.Now().Unix()-int64(7*24*time.Hour/time.Second), 0)
-	}
 	if err := res.launchProcess(); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
+func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData) {
 	defer log.Infoln("ReadLogStreamToChannel is finished")
 	defer close(logCh)
-	defer wg.Done()
 
 	runNum := 0
 	for t.running {
@@ -58,7 +53,7 @@ func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData, wg *sync.Wai
 			if err == nil {
 				logCh <- data
 				runNum = 0
-				t.lastHandledTime = time.Now()
+				t.LastHandledTime = time.Now()
 			} else {
 				log.Warnf("Parse log error: %s", err)
 			}
@@ -124,7 +119,7 @@ func (t *LogReader) IsAlive() bool {
 
 func (t *LogReader) launchProcess() error {
 	cmdParts := strings.Split(t.JournalDCommand, " ")
-	cmdParts = append(cmdParts, "--since", t.lastHandledTime.Format("2006-01-02 15:04:05"))
+	cmdParts = append(cmdParts, "--since", t.LastHandledTime.Format("2006-01-02 15:04:05"))
 	log.Infof("Launching log process: %v", cmdParts)
 
 	cmd := exec.Command(cmdParts[0], cmdParts[1:]...)

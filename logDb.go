@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -228,25 +227,37 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 	return items, nil
 }
 
+func (t *LogDb) SetLastHandledLogTimeNow() error {
+	return t.SetLastHandledLogTime(time.Now())
+}
+
+func (t *LogDb) SetLastHandledLogTime(lastTime time.Time) error {
+	log.Tracef("Executing SetLastHandledLogTime(%s)", lastTime)
+	return t.SetKvRecord("lastLogTime", lastTime.Unix())
+}
+
+func (t *LogDb) GetLastHandledTime() (time.Time, error) {
+	log.Trace("Executing GetLastHandledTime()")
+	ts, err := t.GetKvIntRecord("lastLogTime")
+	if err != nil {
+		return time.Time{}, fmt.Errorf("unable to GetLastHandledTime: %s", err)
+	}
+
+	tm := time.Unix(int64(ts), 0)
+	if tm.Year() < 2024 {
+		tm = time.Unix(time.Now().Unix()-int64(7*24*time.Hour/time.Second), 0)
+	}
+	return tm, nil
+}
+
 func (t *LogDb) SetLastId(lastId int) error {
 	log.Tracef("Executing SetLastId(%d)", lastId)
-	key := "lastId"
-	return t.SetKvRecord(key, lastId)
+	return t.SetKvRecord("lastId", lastId)
 }
 
 func (t *LogDb) GetLastId() (int, error) {
 	log.Trace("Executing GetLastId()")
 	return t.GetKvIntRecord("lastId")
-}
-
-func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
-	log.Tracef("Executing LogRecordsVacuumClean(%d)", maxAge)
-	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
-	res, err := t.db.Exec(`DELETE FROM log_records WHERE ts < ?`, borderTs)
-	if err != nil {
-		return 0, fmt.Errorf("unable to execute LogRecordsVacuumClean query: %s", err)
-	}
-	return res.RowsAffected()
 }
 
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
@@ -297,11 +308,19 @@ func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 	return nil
 }
 
-func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
-	log.Trace("Executing WriteRecordsFromChannel(logCh, wg)")
+func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
+	log.Tracef("Executing LogRecordsVacuumClean(%d)", maxAge)
+	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
+	res, err := t.db.Exec(`DELETE FROM log_records WHERE ts < ?`, borderTs)
+	if err != nil {
+		return 0, fmt.Errorf("unable to execute LogRecordsVacuumClean query: %s", err)
+	}
+	return res.RowsAffected()
+}
 
+func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
+	log.Trace("Executing WriteRecordsFromChannel(logCh, wg)")
 	defer log.Infoln("WriteRecordsFromChannel is finished")
-	defer wg.Done()
 
 	insertQuery, err := t.db.Prepare(`
 		INSERT INTO

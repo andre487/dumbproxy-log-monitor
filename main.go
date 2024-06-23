@@ -47,6 +47,7 @@ func main() {
 	reader := Must1(NewLogReader(LogReaderParams{
 		JournalDCommand: args.logCmd,
 		ExecDir:         args.logCmdDir,
+		LastHandledTime: Must1(db.GetLastHandledTime()),
 	}))
 	scheduler := Must1(NewScheduler(db, args.scheduleInterval))
 	reporter := Must1(NewLogReporter(db))
@@ -99,9 +100,21 @@ func main() {
 
 	var workersGroup sync.WaitGroup
 	logChan := make(chan *LogLineData)
-	go reader.ReadLogStreamToChannel(logChan, &workersGroup)
-	go db.WriteRecordsFromChannel(logChan, &workersGroup)
-	go scheduler.Run(&workersGroup)
+	go func() {
+		reader.ReadLogStreamToChannel(logChan)
+		if err := db.SetLastHandledLogTimeNow(); err != nil {
+			log.Warnf("Unable to SetLastHandledLogTimeNow: %s", err)
+		}
+		workersGroup.Done()
+	}()
+	go func() {
+		db.WriteRecordsFromChannel(logChan)
+		workersGroup.Done()
+	}()
+	go func() {
+		scheduler.Run()
+		workersGroup.Done()
+	}()
 	workersGroup.Add(3)
 
 	stopSignalChan := make(chan os.Signal, 1)

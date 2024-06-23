@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -82,13 +81,10 @@ func (t *Scheduler) ScheduleExactTime(jobEt SchedulerJobExactTimeDescription) er
 	return nil
 }
 
-func (t *Scheduler) Run(wg *sync.WaitGroup) {
+func (t *Scheduler) Run() {
 	defer log.Info("Scheduler is finished")
-	defer wg.Done()
-
 	for t.running {
 		time.Sleep(t.scanInterval)
-
 		nowDuration := time.Duration(time.Now().Unix()) * time.Second
 		for _, job := range t.jobs {
 			t.executeTask(job, nowDuration)
