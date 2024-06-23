@@ -45,7 +45,7 @@ const QueryTimeout = 10 * time.Second
 func NewLogDb(dbPath string) (*LogDb, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to execute sql.Open: %s", err)
 	}
 
 	res := &LogDb{db: db}
@@ -70,6 +70,8 @@ func (t *LogDb) Init() error {
 }
 
 func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
+	log.Debugf("Executing GetSrcIpReportData(%d)", fromId)
+
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
@@ -97,7 +99,7 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 		fromId,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error when executing query: %s", err)
+		return nil, fmt.Errorf("error when executing GetSrcIpReportData query: %s", err)
 	}
 	defer AutoClose(res.Close)
 
@@ -105,7 +107,7 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	for res.Next() {
 		var curData SrcIpReportData
 		if err := res.Scan(&curData.SrcIp, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
-			return nil, fmt.Errorf("error when fetching element: %s", err)
+			return nil, fmt.Errorf("error when fetching element in GetUsersReportData: %s", err)
 		}
 		curData.FirstTime = time.Unix(int64(curData.FirstTs/1000), 0).UTC().Format(time.RFC3339)
 		curData.LastTime = time.Unix(int64(curData.LastTs/1000), 0).UTC().Format(time.RFC3339)
@@ -116,6 +118,8 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 }
 
 func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
+	log.Debugf("Executing GetUsersReportData(%d)", fromId)
+
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
@@ -143,7 +147,7 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 		fromId,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error when executing query: %s", err)
+		return nil, fmt.Errorf("error when executing GetUsersReportData query: %s", err)
 	}
 	defer AutoClose(res.Close)
 
@@ -151,7 +155,7 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	for res.Next() {
 		var curData UsersReportData
 		if err := res.Scan(&curData.User, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
-			return nil, fmt.Errorf("error when fetching element: %s", err)
+			return nil, fmt.Errorf("error when fetching element in GetUsersReportData: %s", err)
 		}
 		curData.FirstTime = time.Unix(int64(curData.FirstTs/1000), 0).UTC().Format(time.RFC3339)
 		curData.LastTime = time.Unix(int64(curData.LastTs/1000), 0).UTC().Format(time.RFC3339)
@@ -162,6 +166,8 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 }
 
 func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error) {
+	log.Debugf("Executing GetDestHostsReportData(%d)", fromId)
+
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
@@ -189,7 +195,7 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 		fromId,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error when executing query: %s", err)
+		return nil, fmt.Errorf("error when executing GetDestHostsReportData query: %s", err)
 	}
 	defer AutoClose(res.Close)
 
@@ -197,7 +203,7 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 	for res.Next() {
 		var curData DestHostsReportData
 		if err := res.Scan(&curData.DestHost, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
-			return nil, fmt.Errorf("error when fetching element: %s", err)
+			return nil, fmt.Errorf("error when fetching element in GetDestHostsReportData: %s", err)
 		}
 		curData.FirstTime = time.Unix(int64(curData.FirstTs/1000), 0).UTC().Format(time.RFC3339)
 		curData.LastTime = time.Unix(int64(curData.LastTs/1000), 0).UTC().Format(time.RFC3339)
@@ -208,28 +214,33 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 }
 
 func (t *LogDb) SetLastId(lastId int) error {
+	log.Debugf("Executing SetLastId(%d)", lastId)
 	key := "lastId"
 	return t.SetKvRecord(key, lastId)
 }
 
 func (t *LogDb) GetLastId() (int, error) {
+	log.Debug("Executing GetLastId()")
 	return t.GetKvIntRecord("lastId")
 }
 
 func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
+	log.Debugf("Executing LogRecordsVacuumClean(%d)", maxAge)
 	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
 	res, err := t.db.Exec(`DELETE FROM log_records WHERE ts < ?`, borderTs)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("unable to execute LogRecordsVacuumClean query: %s", err)
 	}
 	return res.RowsAffected()
 }
 
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
+	log.Debugf("Executing GetKvIntRecord(%s)", key)
+
 	res := t.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM kv_data WHERE name=? LIMIT 1`, key)
 	err := res.Err()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("unable to execute GetKvIntRecord query: %s", err)
 	}
 
 	var val int
@@ -237,17 +248,19 @@ func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	} else if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("unable to fetch element in GetKvIntRecord: %s", err)
 	}
 
 	return val, nil
 }
 
 func (t *LogDb) GetKvStrRecord(key string) (string, error) {
+	log.Debugf("Executing GetKvStrRecord(%s)", key)
+
 	res := t.db.QueryRow(`SELECT value FROM kv_data WHERE name=? LIMIT 1`, key)
 	err := res.Err()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("unable to execute GetKvStrRecord query: %s", err)
 	}
 
 	var val string
@@ -255,20 +268,23 @@ func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	} else if err != nil {
-		return "", err
+		return "", fmt.Errorf("unable to fetch element in GetKvStrRecord: %s", err)
 	}
 
 	return val, nil
 }
 
 func (t *LogDb) SetKvRecord(key string, val interface{}) error {
+	log.Debugf("Executing SetKvRecord(%s, %v)", key, val)
 	if _, err := t.db.Exec(`REPLACE INTO kv_data (name, value) VALUES (?, CAST(? AS TEXT))`, key, val); err != nil {
-		return err
+		return fmt.Errorf("unable to execute SetKvRecord query: %s", err)
 	}
 	return nil
 }
 
 func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGroup) {
+	log.Debug("Executing WriteRecordsFromChannel(logCh, wg)")
+
 	defer log.Infoln("WriteRecordsFromChannel is finished")
 	defer wg.Done()
 
@@ -332,7 +348,7 @@ func (t *LogDb) initSchema() error {
 
 	for _, tableQuery := range tablesSql {
 		if _, err := t.db.Exec(tableQuery); err != nil {
-			return err
+			return fmt.Errorf("unable to init schema: %s", err)
 		}
 	}
 
@@ -351,7 +367,7 @@ func (t *LogDb) checkSchemaVersion() error {
 	}
 
 	if version != 1 {
-		log.Errorf("Version is incorrect: %d", version)
+		log.Fatalf("Version is incorrect: %d", version)
 	}
 
 	return nil
