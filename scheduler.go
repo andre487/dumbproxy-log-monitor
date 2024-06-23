@@ -108,7 +108,7 @@ func (t *Scheduler) executeTask(job SchedulerJobDescription, nowDuration time.Du
 
 	lastExecDuration := time.Duration(lastExecTime) * time.Second
 	if nowDuration-lastExecDuration > job.Interval {
-		log.Infof("Executing %s\n", taskName)
+		log.Infof("Executing %s", taskName)
 		if err := job.Task(); err != nil {
 			log.Warnf("WARN Can't exec task %s: %s", lastExecKey, err)
 		}

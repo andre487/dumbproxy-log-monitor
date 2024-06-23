@@ -29,7 +29,7 @@ type LogReader struct {
 
 func NewLogReader(params LogReaderParams) (*LogReader, error) {
 	if params.JournalDCommand == "" {
-		params.JournalDCommand = "sudo journald -fu dumbproxy.service"
+		params.JournalDCommand = "sudo journalctl -fu dumbproxy.service"
 	}
 	if params.ProcessRestartLimit == 0 {
 		params.ProcessRestartLimit = 3
@@ -121,7 +121,7 @@ func (t *LogReader) IsAlive() bool {
 
 func (t *LogReader) launchProcess() error {
 	cmdParts := strings.Split(t.JournalDCommand, " ")
-	cmdParts = append(cmdParts, "--since", t.lastHandledTime.Format(time.RFC3339))
+	cmdParts = append(cmdParts, "--since", t.lastHandledTime.Format("2006-01-02 15:04:05"))
 	log.Infof("Launching log process: %v", cmdParts)
 
 	cmd := exec.Command(cmdParts[0], cmdParts[1:]...)
