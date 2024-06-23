@@ -1,6 +1,8 @@
 package main
 
-import log "github.com/sirupsen/logrus"
+import (
+	log "github.com/sirupsen/logrus"
+)
 
 func Must0(err error) {
 	if err != nil {

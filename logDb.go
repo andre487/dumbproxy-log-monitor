@@ -288,14 +288,19 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData, wg *sync.WaitGr
 	defer log.Infoln("WriteRecordsFromChannel is finished")
 	defer wg.Done()
 
+	insertQuery, err := t.db.Prepare(`
+		INSERT INTO
+			log_records (ts, log_type, date_time, logger_name, level, src_ip, dest_ip, dest_host, user)
+		VALUES 
+			(?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		log.Fatalf("unable to prepare insert query in WriteRecordsFromChannel: %s", err)
+	}
+	defer AutoClose(insertQuery.Close)
+
 	for item := range logCh {
-		_, err := t.db.Exec(
-			`
-			INSERT INTO
-				log_records (ts, log_type, date_time, logger_name, level, src_ip, dest_ip, dest_host, user)
-			VALUES 
-				(?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`,
+		_, err := insertQuery.Exec(
 			time.Now().UnixMilli(),
 			item.LogLineType,
 			item.DateTime.Format(time.RFC3339),
