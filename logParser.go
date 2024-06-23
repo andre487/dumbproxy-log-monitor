@@ -109,13 +109,13 @@ func ParseLogLine(logLine string) (*LogLineData, error) {
 		return &LogLineData{LogLineType: LogLintTypeJustMessage}, nil
 	}
 
-	return nil, ErrorLogLineNotMatch
+	return nil, errors.Join(ErrorLogLineNotMatch, fmt.Errorf("unexpected log line: \"%s\"", logLine))
 }
 
 func ParseLogLineGeneral(logLine string) (*LogLineData, error) {
 	resMap := parseLogLineWithRe(logLineGeneralRe, logLine)
 	if resMap == nil {
-		return nil, ErrorLogLineNotMatch
+		return nil, errors.Join(ErrorLogLineNotMatch, fmt.Errorf("unexpected log line: \"%s\"", logLine))
 	}
 
 	var err *multierror.Error
@@ -145,7 +145,7 @@ func ParseLogLineGeneral(logLine string) (*LogLineData, error) {
 func ParseLogLineRequest(logLine string) (*LogLineData, error) {
 	resMap := parseLogLineWithRe(logLineRequestRe, logLine)
 	if resMap == nil {
-		return nil, ErrorLogLineNotMatch
+		return nil, errors.Join(ErrorLogLineNotMatch, fmt.Errorf("unexpected log line: \"%s\"", logLine))
 	}
 
 	var err *multierror.Error
@@ -182,7 +182,7 @@ func ParseLogLineRequest(logLine string) (*LogLineData, error) {
 func ParseLogLineError(logLine string) (*LogLineData, error) {
 	resMap := parseLogLineWithRe(logLineErrorRe, logLine)
 	if resMap == nil {
-		return nil, ErrorLogLineNotMatch
+		return nil, errors.Join(ErrorLogLineNotMatch, fmt.Errorf("unexpected log line: \"%s\"", logLine))
 	}
 
 	var err *multierror.Error

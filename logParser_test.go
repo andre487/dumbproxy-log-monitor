@@ -40,7 +40,7 @@ func TestParseLogLineGeneral(t *testing.T) {
 	)
 
 	res, err = ParseLogLineGeneral("")
-	assert.ErrorIs(t, ErrorLogLineNotMatch, err)
+	assert.ErrorIs(t, err, ErrorLogLineNotMatch)
 
 	res, err = ParseLogLineGeneral(strings.Replace(logLine, "143.178.232.21", "328.1.1.1", 1))
 	assert.ErrorIs(t, err, ErrorParse)
@@ -69,7 +69,7 @@ func TestParseLogLineRequest(t *testing.T) {
 	)
 
 	res, err = ParseLogLineRequest("")
-	assert.ErrorIs(t, ErrorLogLineNotMatch, err)
+	assert.ErrorIs(t, err, ErrorLogLineNotMatch)
 
 	res, err = ParseLogLineRequest(strings.Replace(logLine, "143.178.228.182", "328.1.1.1", 1))
 	assert.ErrorIs(t, err, ErrorParse)
@@ -100,7 +100,7 @@ func TestParseLogLineError(t *testing.T) {
 	)
 
 	res, err = ParseLogLineError("")
-	assert.ErrorIs(t, ErrorLogLineNotMatch, err)
+	assert.ErrorIs(t, err, ErrorLogLineNotMatch)
 
 	res, err = ParseLogLineError(strings.Replace(logLine, "143.178.232.21", "328.1.1.1", 1))
 	assert.ErrorIs(t, err, ErrorParse)
