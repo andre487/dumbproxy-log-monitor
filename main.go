@@ -50,37 +50,39 @@ func main() {
 	scheduler := Must1(NewScheduler(db, 1*time.Second))
 	reporter := Must1(NewLogReporter(db))
 
+	createReport := func() error {
+		report, err := reporter.GenerateReport()
+		if err != nil {
+			return fmt.Errorf("enable to generate report: %s", err)
+		}
+
+		if mailer != nil {
+			hostname, err := os.Hostname()
+			if err != nil {
+				log.Warnf("Unable to get hostname: %s", err)
+				hostname = "Unknown host"
+			}
+			subject := hostname + ": Proxy usage report"
+			if err := mailer.SendMessage(args.reportMail, subject, report); err != nil {
+				return fmt.Errorf("unable to send email: %s", err)
+			}
+			log.Infof("Report was successfully sent to %s", args.reportMail)
+		}
+
+		if args.printReport {
+			fmt.Printf("==========\nReport:\n%s\n==========\n", report)
+		}
+
+		return nil
+	}
+
 	Must0(
 		scheduler.ScheduleExactTime(SchedulerJobExactTimeDescription{
 			TaskName: "CreateReport",
 			Hour:     args.reportHour,
 			Minute:   args.reportMinute,
 			Second:   args.reportSecond,
-			Task: func() error {
-				report, err := reporter.GenerateReport()
-				if err != nil {
-					return err
-				}
-
-				if mailer != nil {
-					hostname, err := os.Hostname()
-					if err != nil {
-						log.Warnf("Unable to get hostname: %s", err)
-						hostname = "Unknown host"
-					}
-					subject := hostname + ": Proxy usage report"
-					if err := mailer.SendMessage(args.reportMail, subject, report); err != nil {
-						return err
-					}
-					log.Infof("Report was successfully sent to %s", args.reportMail)
-				}
-
-				if args.printReport {
-					fmt.Printf("==========\nReport:\n%s\n==========\n", report)
-				}
-
-				return nil
-			},
+			Task:     createReport,
 		}),
 	)
 
@@ -102,12 +104,25 @@ func main() {
 	workersGroup.Add(3)
 
 	stopSignalChan := make(chan os.Signal, 1)
+	reportSignalChan := make(chan os.Signal, 1)
 	signal.Notify(stopSignalChan, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(reportSignalChan, syscall.SIGUSR1, syscall.SIGUSR2)
+
 	go func() {
 		sig := <-stopSignalChan
 		log.Infof("Stopping on signal %v", sig)
+		close(reportSignalChan)
 		reader.Stop()
 		scheduler.Stop()
+	}()
+
+	go func() {
+		for sig := range reportSignalChan {
+			log.Infof("Sending report on signal %v", sig)
+			if err := createReport(); err != nil {
+				log.Warnf("Error when creating report on signal: %s", err)
+			}
+		}
 	}()
 
 	workersGroup.Wait()
