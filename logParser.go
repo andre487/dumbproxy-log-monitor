@@ -14,6 +14,7 @@ import (
 )
 
 var systemDLogRe = regroup.MustCompile("^(?P<month>\\w+)\\s+(?P<day>\\d+)\\s+(?P<hour>\\d+):(?P<minute>\\d+):(?P<sec>\\d+)\\s+(?P<host>\\S+)\\s+(?P<unit>[\\w.-]+)\\[(?P<pid>\\d+)]:\\s+(?P<logRecord>.+)$")
+var dumbProxyLogRe = regroup.MustCompile("^(?P<logger>\\w+)\\s+:\\s+(?P<year>\\d+)/(?P<month>\\d+)/(?P<day>\\d+)\\s+(?P<hour>\\d+):(?P<minute>\\d+):(?P<sec>\\d+)\\s+(?P<fileName>[^:]+):(?P<line>\\d+):(?:\\s+(?P<levelName>[A-Z]+))?\\s+(?P<logRecord>.+)$")
 
 var logLineGeneralRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+(?P<ip>\\S+):\\d+ [A-Z]+")
 var logLineRequestRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+Request:\\s+(?P<ip>\\S+):\\d+ => (?P<dest>\\S+?)(?::\\d+)? \"(?P<user>[\\w-]*)\"(?:\\s+(?:HTTP/[\\d.]+)?\\s*[A-Z]+ (?:https?:)?//(?P<host>[\\w.-]+?)(?::\\d+)?/)?")
@@ -37,6 +38,26 @@ type SystemDLogLineRecord struct {
 	Unit      string `regroup:"unit"`
 	Pid       int    `regroup:"pid"`
 	LogRecord string `regroup:"logRecord"`
+}
+
+type dumbProxyLogLineRecord struct {
+	Year      int        `regroup:"year"`
+	Month     time.Month `regroup:"month"`
+	Day       int        `regroup:"day"`
+	Hour      int        `regroup:"hour"`
+	Minute    int        `regroup:"minute"`
+	Sec       int        `regroup:"sec"`
+	LogTime   time.Time
+	Logger    string `regroup:"logger"`
+	FileName  string `regroup:"fileName"`
+	Line      int    `regroup:"line"`
+	LevelName string `regroup:"levelName"`
+	LogRecord string `regroup:"logRecord"`
+}
+
+type DumbProxyLogLineRecord struct {
+	dumbProxyLogLineRecord
+	SystemDData *SystemDLogLineRecord
 }
 
 const (
@@ -82,7 +103,7 @@ var ErrorParse = errors.New("parse error")
 func ParseSystemDLogLine(logLine string) (*SystemDLogLineRecord, error) {
 	var data SystemDLogLineRecord
 	if err := systemDLogRe.MatchToTarget(logLine, &data); err != nil {
-		return nil, errors.Join(errors.New("invalid SystemD log record format"), err)
+		return nil, errors.Join(errors.New("invalid SystemD log record format"), ErrorParse, err)
 	}
 
 	now := time.Now()
@@ -95,7 +116,24 @@ func ParseSystemDLogLine(logLine string) (*SystemDLogLineRecord, error) {
 	if now.Month() == time.January && month == time.December {
 		year--
 	}
-	data.LogTime = time.Date(year, month, data.Day, data.Hour, data.Minute, data.Sec, 0, now.Location())
+	data.LogTime = time.Date(year, month, data.Day, data.Hour, data.Minute, data.Sec, 0, time.Local)
+
+	return &data, nil
+}
+
+func ParseDumbProxyLogLine(logLine string) (*DumbProxyLogLineRecord, error) {
+	parseError := errors.Join(errors.New("unable to parse log record"), ErrorParse)
+	systemDData, err := ParseSystemDLogLine(logLine)
+	if err != nil {
+		return nil, errors.Join(parseError, err)
+	}
+
+	var data DumbProxyLogLineRecord
+	if err := dumbProxyLogRe.MatchToTarget(systemDData.LogRecord, &data.dumbProxyLogLineRecord); err != nil {
+		return nil, errors.Join(parseError, errors.New("dumbproxy log parse error"), err)
+	}
+	data.SystemDData = systemDData
+	data.LogTime = time.Date(data.Year, data.Month, data.Day, data.Hour, data.Minute, data.Sec, 0, time.Local)
 
 	return &data, nil
 }
