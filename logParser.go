@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-multierror"
+	"github.com/oriser/regroup"
 )
+
+var systemDLogRe = regroup.MustCompile("^(?P<month>\\w+)\\s+(?P<day>\\d+)\\s+(?P<hour>\\d+):(?P<minute>\\d+):(?P<sec>\\d+)\\s+(?P<host>\\S+)\\s+(?P<unit>[\\w.-]+)\\[(?P<pid>\\d+)]:\\s+(?P<logRecord>.+)$")
 
 var logLineGeneralRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+(?P<ip>\\S+):\\d+ [A-Z]+")
 var logLineRequestRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+Request:\\s+(?P<ip>\\S+):\\d+ => (?P<dest>\\S+?)(?::\\d+)? \"(?P<user>[\\w-]*)\"(?:\\s+(?:HTTP/[\\d.]+)?\\s*[A-Z]+ (?:https?:)?//(?P<host>[\\w.-]+?)(?::\\d+)?/)?")
@@ -23,6 +26,19 @@ var serviceMessageRe = regexp.MustCompile(".+Stopping Dumb Proxy|Deactivated suc
 
 type LogLineType uint64
 
+type SystemDLogLineRecord struct {
+	Month     string `regroup:"month"`
+	Day       int    `regroup:"day"`
+	Hour      int    `regroup:"hour"`
+	Minute    int    `regroup:"minute"`
+	Sec       int    `regroup:"sec"`
+	LogTime   time.Time
+	Host      string `regroup:"host"`
+	Unit      string `regroup:"unit"`
+	Pid       int    `regroup:"pid"`
+	LogRecord string `regroup:"logRecord"`
+}
+
 const (
 	LogLineTypeGeneral LogLineType = iota
 	LogLineTypeRequest
@@ -33,6 +49,21 @@ const (
 	LogLineTypeInternalError
 	LogLintTypeJustMessage
 )
+
+var monthMap = map[string]time.Month{
+	"Jan": time.January,
+	"Feb": time.February,
+	"Mar": time.March,
+	"Apr": time.April,
+	"May": time.May,
+	"Jun": time.June,
+	"Jul": time.July,
+	"Aug": time.August,
+	"Sep": time.September,
+	"Oct": time.October,
+	"Nov": time.November,
+	"Dec": time.December,
+}
 
 type LogLineData struct {
 	LogLineType LogLineType
@@ -47,6 +78,27 @@ type LogLineData struct {
 
 var ErrorLogLineNotMatch = errors.New("log line doesn't match")
 var ErrorParse = errors.New("parse error")
+
+func ParseSystemDLogLine(logLine string) (*SystemDLogLineRecord, error) {
+	var data SystemDLogLineRecord
+	if err := systemDLogRe.MatchToTarget(logLine, &data); err != nil {
+		return nil, errors.Join(errors.New("invalid SystemD log record format"), err)
+	}
+
+	now := time.Now()
+	month, ok := monthMap[data.Month]
+	if !ok {
+		month = now.Month()
+	}
+
+	year := now.Year()
+	if now.Month() == time.January && month == time.December {
+		year--
+	}
+	data.LogTime = time.Date(year, month, data.Day, data.Hour, data.Minute, data.Sec, 0, now.Location())
+
+	return &data, nil
+}
 
 func ParseLogLine(logLine string) (*LogLineData, error) {
 	res, err := ParseLogLineGeneral(logLine)
