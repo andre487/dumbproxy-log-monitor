@@ -40,7 +40,7 @@ type SystemDLogLineRecord struct {
 	LogRecord string `regroup:"logRecord"`
 }
 
-type dumbProxyLogLineRecord struct {
+type DumbProxyLogLineRecord struct {
 	Year      int        `regroup:"year"`
 	Month     time.Month `regroup:"month"`
 	Day       int        `regroup:"day"`
@@ -53,11 +53,6 @@ type dumbProxyLogLineRecord struct {
 	Line      int    `regroup:"line"`
 	LevelName string `regroup:"levelName"`
 	LogRecord string `regroup:"logRecord"`
-}
-
-type DumbProxyLogLineRecord struct {
-	dumbProxyLogLineRecord
-	SystemDData *SystemDLogLineRecord
 }
 
 const (
@@ -121,18 +116,11 @@ func ParseSystemDLogLine(logLine string) (*SystemDLogLineRecord, error) {
 	return &data, nil
 }
 
-func ParseDumbProxyLogLine(logLine string) (*DumbProxyLogLineRecord, error) {
-	parseError := errors.Join(errors.New("unable to parse log record"), ErrorParse)
-	systemDData, err := ParseSystemDLogLine(logLine)
-	if err != nil {
-		return nil, errors.Join(parseError, err)
-	}
-
+func ParseDumbProxyLogLine(systemDLogLine string) (*DumbProxyLogLineRecord, error) {
 	var data DumbProxyLogLineRecord
-	if err := dumbProxyLogRe.MatchToTarget(systemDData.LogRecord, &data.dumbProxyLogLineRecord); err != nil {
-		return nil, errors.Join(parseError, errors.New("dumbproxy log parse error"), err)
+	if err := dumbProxyLogRe.MatchToTarget(systemDLogLine, &data); err != nil {
+		return nil, errors.Join(errors.New("dumbproxy log parse error"), err)
 	}
-	data.SystemDData = systemDData
 	data.LogTime = time.Date(data.Year, data.Month, data.Day, data.Hour, data.Minute, data.Sec, 0, time.Local)
 
 	return &data, nil
