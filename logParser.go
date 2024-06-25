@@ -11,10 +11,12 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/oriser/regroup"
+	log "github.com/sirupsen/logrus"
 )
 
 var systemDLogRe = regroup.MustCompile("^(?P<month>\\w+)\\s+(?P<day>\\d+)\\s+(?P<hour>\\d+):(?P<minute>\\d+):(?P<sec>\\d+)\\s+(?P<host>\\S+)\\s+(?P<unit>[\\w.-]+)\\[(?P<pid>\\d+)]:\\s+(?P<logRecord>.+)$")
 var dumbProxyLogRe = regroup.MustCompile("^(?P<logger>\\w+)\\s+:\\s+(?P<year>\\d+)/(?P<month>\\d+)/(?P<day>\\d+)\\s+(?P<hour>\\d+):(?P<minute>\\d+):(?P<sec>\\d+)\\s+(?P<fileName>[^:]+):(?P<line>\\d+):(?:\\s+(?P<levelName>[A-Z]+))?\\s+(?P<logRecord>.+)$")
+var dumbProxyRequestLineRe = regroup.MustCompile("^Request:\\s+(?P<srcIp>\\S+):\\d+\\s+=>\\s+(?P<destIp>\\S+):(?P<destPort>\\d+)\\s+\"(?P<username>[^\"]*)\"\\s+(?P<proto>\\S+)\\s+(?P<method>[A-Z]+)\\s+(?P<url>.+)$")
 
 var logLineGeneralRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+(?P<ip>\\S+):\\d+ [A-Z]+")
 var logLineRequestRe = regexp.MustCompile(".+dumbproxy\\[\\d+]:\\s+(?P<logger>[\\w-]+)\\s+: (?P<year>[0-9]+)/(?P<month>[0-9]+)/(?P<day>[0-9]+) (?P<hour>[0-9]+):(?P<min>[0-9]+):(?P<sec>[0-9]+) [\\w.-]+:\\d+: (?P<level>[A-Z]+)\\s+Request:\\s+(?P<ip>\\S+):\\d+ => (?P<dest>\\S+?)(?::\\d+)? \"(?P<user>[\\w-]*)\"(?:\\s+(?:HTTP/[\\d.]+)?\\s*[A-Z]+ (?:https?:)?//(?P<host>[\\w.-]+?)(?::\\d+)?/)?")
@@ -56,7 +58,15 @@ type DumbProxyLogLineRecord struct {
 }
 
 const (
-	LogLineTypeGeneral LogLineType = iota
+	LogLineTypeUnmatched LogLineType = iota
+	LogLineTypeOtherUnit
+	LogLineTypeProxyUnknown
+
+	LogLineTypeProxyRequest
+	LogLineTypeProxyRequestHttpInfo
+	LogLineTypeProxyRequestError
+
+	LogLineTypeGeneral
 	LogLineTypeRequest
 	LogLineTypeError
 	LogLineTypeDnsError
@@ -81,6 +91,32 @@ var monthMap = map[string]time.Month{
 	"Dec": time.December,
 }
 
+type LogLineData2 struct {
+	LogLineType LogLineType
+	LogLine     string
+	LogTime     time.Time
+	Host        string
+	Pid         int
+	SrcIp       string
+	DestIp      string
+	DestPort    int
+	Username    string
+	Proto       string
+	Method      string
+	Url         string
+	Status      int
+}
+
+type requestLogRecord struct {
+	SrcIp    string `regroup:"srcIp"`
+	DestIp   string `regroup:"destIp"`
+	DestPort int    `regroup:"destPort"`
+	Username string `regroup:"username"`
+	Proto    string `regroup:"proto"`
+	Method   string `regroup:"method"`
+	Url      string `regroup:"url"`
+}
+
 type LogLineData struct {
 	LogLineType LogLineType
 	DateTime    time.Time
@@ -94,6 +130,78 @@ type LogLineData struct {
 
 var ErrorLogLineNotMatch = errors.New("log line doesn't match")
 var ErrorParse = errors.New("parse error")
+
+func ParseLogLine2(logLine string) (*LogLineData2, error) {
+	res := new(LogLineData2)
+	res.LogTime = time.Now()
+	res.LogLine = logLine
+
+	sysLogRes, err := ParseSystemDLogLine(logLine)
+	if err != nil {
+		if errors.Is(err, ErrorParse) {
+			res.LogLineType = LogLineTypeUnmatched
+			return res, nil
+		}
+		return nil, errors.Join(errors.New("SystemD parse error"), err)
+	}
+
+	res.LogTime = sysLogRes.LogTime
+	res.Host = sysLogRes.Host
+	res.Pid = sysLogRes.Pid
+	if sysLogRes.Unit != "dumbproxy" {
+		res.LogLineType = LogLineTypeOtherUnit
+		return res, nil
+	}
+
+	dumbProxyRes, err := ParseDumbProxyLogLine(sysLogRes.LogRecord)
+	res.LogLineType = LogLineTypeProxyUnknown
+	if err != nil {
+		if errors.Is(err, ErrorParse) {
+			return res, nil
+		}
+		return nil, errors.Join(errors.New("dumbproxy parse error"), err)
+	}
+
+	res.LogLineType = LogLineTypeProxyUnknown
+	res.LogTime = dumbProxyRes.LogTime
+
+	switch dumbProxyRes.Logger {
+	case "PROXY":
+		if dumbProxyRes.LevelName == "INFO" {
+			if strings.HasPrefix(dumbProxyRes.LogRecord, "Request: ") {
+				var curData requestLogRecord
+				if err := dumbProxyRequestLineRe.MatchToTarget(dumbProxyRes.LogRecord, &curData); err != nil {
+					return res, nil
+				}
+				res.LogLineType = LogLineTypeProxyRequest
+				res.SrcIp = curData.SrcIp
+				res.DestIp = curData.DestIp
+				res.DestPort = curData.DestPort
+				res.Username = curData.Username
+				res.Proto = curData.Proto
+				res.Method = curData.Method
+				res.Url = curData.Url
+			} else {
+				parts := strings.Split(dumbProxyRes.LogRecord, " ")
+				if len(parts) != 5 {
+					return res, nil
+				}
+				res.LogLineType = LogLineTypeProxyRequestHttpInfo
+				res.SrcIp = parts[0][:strings.LastIndex(parts[0], ":")]
+				res.Method = parts[1]
+				res.Url = parts[2]
+				if res.Status, err = strconv.Atoi(parts[3]); err != nil {
+					log.Errorf("Unable to parse status code: %s", err)
+				}
+			}
+		} else {
+			res.LogLineType = LogLineTypeProxyRequestError
+		}
+		break
+	}
+
+	return res, nil
+}
 
 func ParseSystemDLogLine(logLine string) (*SystemDLogLineRecord, error) {
 	var data SystemDLogLineRecord
