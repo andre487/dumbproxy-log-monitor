@@ -13,7 +13,7 @@ import (
 )
 
 type LogReaderParams struct {
-	JournalDCommand     string
+	LogProducerCommand  string
 	ExecDir             string
 	ProcessRestartLimit int
 	LastHandledTime     time.Time
@@ -27,8 +27,8 @@ type LogReader struct {
 }
 
 func NewLogReader(params LogReaderParams) (*LogReader, error) {
-	if params.JournalDCommand == "" {
-		params.JournalDCommand = "sudo journalctl -fu dumbproxy.service"
+	if params.LogProducerCommand == "" {
+		params.LogProducerCommand = "sudo journalctl -fu dumbproxy.service"
 	}
 	if params.ProcessRestartLimit == 0 {
 		params.ProcessRestartLimit = 3
@@ -118,7 +118,7 @@ func (t *LogReader) IsAlive() bool {
 }
 
 func (t *LogReader) launchProcess() error {
-	cmdParts := strings.Split(t.JournalDCommand, " ")
+	cmdParts := strings.Split(t.LogProducerCommand, " ")
 	cmdParts = append(cmdParts, "--since", t.LastHandledTime.Format("2006-01-02 15:04:05"))
 	log.Infof("Launching log process: %v", cmdParts)
 

@@ -32,7 +32,7 @@ func NewMailer(configPath string) (*Mailer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to open mailer config file: %s", err)
 	}
-	defer AutoClose(confFp.Close)
+	defer CloseOrWarn(confFp)
 
 	confContent, err := io.ReadAll(confFp)
 	if err != nil {

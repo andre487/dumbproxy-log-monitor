@@ -32,7 +32,7 @@
     </tr>
     {{ range .UserData }}
         <tr>
-            <td {{ $CellAttrs | attr }}>{{ .User }}</td>
+            <td {{ $CellAttrs | attr }}>{{ .Username }}</td>
             <td {{ $NumCellAttrs | attr }}>{{ .Reqs }}</td>
             <td {{ $CellAttrs | attr }}>{{ .FirstTime }}</td>
             <td {{ $CellAttrs | attr }}>{{ .LastTime }}</td>
@@ -43,6 +43,7 @@
 <h2>Dest hosts</h2>
 <table {{ $TableAttrs | attr }}>
     <tr>
+        <th {{ $CellAttrs | attr }}>Dest IP</th>
         <th {{ $CellAttrs | attr }}>Dest host</th>
         <th {{ $CellAttrs | attr }}>Requests</th>
         <th {{ $CellAttrs | attr }}>First seen</th>
@@ -50,6 +51,7 @@
     </tr>
     {{ range .DestHostsData }}
         <tr>
+            <td {{ $CellAttrs | attr }}>{{ .DestIp }}</td>
             <td {{ $CellAttrs | attr }}>{{ .DestHost }}</td>
             <td {{ $NumCellAttrs | attr }}>{{ .Reqs }}</td>
             <td {{ $CellAttrs | attr }}>{{ .FirstTime }}</td>

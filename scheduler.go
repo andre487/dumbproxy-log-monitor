@@ -106,7 +106,7 @@ func (t *Scheduler) executeTask(job SchedulerJobDescription, nowDuration time.Du
 	if nowDuration-lastExecDuration > job.Interval {
 		log.Infof("Executing %s", taskName)
 		if err := job.Task(); err != nil {
-			log.Warnf("WARN Can't exec task %s: %s", lastExecKey, err)
+			log.Warnf("WARN Can't exec task %s: %s", taskName, err)
 		}
 		if err := t.db.SetKvRecord(lastExecKey, nowDuration/time.Second); err != nil {
 			log.Warnf("Can't update last exec time for task %s: %s", lastExecKey, err)
@@ -115,7 +115,7 @@ func (t *Scheduler) executeTask(job SchedulerJobDescription, nowDuration time.Du
 }
 
 func createTaskLastExecTimeKey(taskName string) string {
-	return fmt.Sprintf("scheduler:%s:last_exec_time", taskName)
+	return fmt.Sprintf("scheduler:%s:LastExecTime", taskName)
 }
 
 func (t *Scheduler) Stop() {
