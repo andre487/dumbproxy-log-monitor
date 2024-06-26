@@ -52,7 +52,7 @@ type DumbProxyLogLineRecord struct {
 	LogTime   time.Time
 	Logger    string `regroup:"logger"`
 	FileName  string `regroup:"fileName"`
-	Line      int    `regroup:"line"`
+	FileLine  int    `regroup:"line"`
 	LevelName string `regroup:"levelName"`
 	LogRecord string `regroup:"logRecord"`
 }
@@ -65,6 +65,10 @@ const (
 	LogLineTypeProxyRequest
 	LogLineTypeProxyRequestHttpInfo
 	LogLineTypeProxyRequestError
+	LogLineTypeHttpSrvError
+
+	LogLineTypeRuntimeLog
+	LogLineTypeAuthModuleLog
 
 	LogLineTypeGeneral
 	LogLineTypeRequest
@@ -92,19 +96,24 @@ var monthMap = map[string]time.Month{
 }
 
 type LogLineData2 struct {
-	LogLineType LogLineType
-	LogLine     string
-	LogTime     time.Time
-	Host        string
-	Pid         int
-	SrcIp       string
-	DestIp      string
-	DestPort    int
-	Username    string
-	Proto       string
-	Method      string
-	Url         string
-	Status      int
+	LogLineType    LogLineType
+	LogLine        string
+	LogTime        time.Time
+	IsError        bool
+	HasRequestInfo bool
+	Host           string
+	Pid            int
+	FileName       string
+	FileLine       int
+	SrcIp          string
+	DestIp         string
+	DestPort       int
+	Username       string
+	Proto          string
+	Method         string
+	Url            string
+	Status         int
+	ErrorMessage   string
 }
 
 type requestLogRecord struct {
@@ -164,6 +173,8 @@ func ParseLogLine2(logLine string) (*LogLineData2, error) {
 
 	res.LogLineType = LogLineTypeProxyUnknown
 	res.LogTime = dumbProxyRes.LogTime
+	res.FileName = dumbProxyRes.FileName
+	res.FileLine = dumbProxyRes.FileLine
 
 	switch dumbProxyRes.Logger {
 	case "PROXY":
@@ -181,6 +192,7 @@ func ParseLogLine2(logLine string) (*LogLineData2, error) {
 				res.Proto = curData.Proto
 				res.Method = curData.Method
 				res.Url = curData.Url
+				res.HasRequestInfo = true
 			} else {
 				parts := strings.Split(dumbProxyRes.LogRecord, " ")
 				if len(parts) != 5 {
@@ -193,10 +205,28 @@ func ParseLogLine2(logLine string) (*LogLineData2, error) {
 				if res.Status, err = strconv.Atoi(parts[3]); err != nil {
 					log.Errorf("Unable to parse status code: %s", err)
 				}
+				res.HasRequestInfo = true
 			}
 		} else {
+			res.IsError = true
 			res.LogLineType = LogLineTypeProxyRequestError
+			res.ErrorMessage = dumbProxyRes.LogRecord
 		}
+		break
+	case "HTTPSRV":
+		res.IsError = true
+		res.LogLineType = LogLineTypeHttpSrvError
+		res.ErrorMessage = dumbProxyRes.LogRecord
+		break
+	case "MAIN":
+		res.IsError = dumbProxyRes.LevelName == "ERROR" || dumbProxyRes.LevelName == "CRITICAL"
+		res.LogLineType = LogLineTypeRuntimeLog
+		res.ErrorMessage = dumbProxyRes.LogRecord
+		break
+	case "AUTH":
+		res.IsError = dumbProxyRes.LevelName == "ERROR" || dumbProxyRes.LevelName == "CRITICAL"
+		res.LogLineType = LogLineTypeAuthModuleLog
+		res.ErrorMessage = dumbProxyRes.LogRecord
 		break
 	}
 
@@ -234,6 +264,7 @@ func ParseDumbProxyLogLine(systemDLogLine string) (*DumbProxyLogLineRecord, erro
 	return &data, nil
 }
 
+// ParseLogLine TODO: Remove
 func ParseLogLine(logLine string) (*LogLineData, error) {
 	res, err := ParseLogLineGeneral(logLine)
 	if err == nil {
