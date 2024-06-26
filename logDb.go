@@ -14,8 +14,9 @@ import (
 )
 
 type LogDb struct {
-	logDb *sql.DB
-	kvDb  *sql.DB
+	logDb   *sql.DB
+	kvDb    *sql.DB
+	cacheDb *sql.DB
 }
 
 type BasicGroupReportData struct {
@@ -39,7 +40,8 @@ type UsersReportData struct {
 
 type DestHostsReportData struct {
 	BasicGroupReportData
-	DestIp string
+	DestIp   string
+	DestHost string
 }
 
 const QueryTimeout = 10 * time.Second
@@ -71,11 +73,32 @@ func NewLogDb(dbDir string) (*LogDb, error) {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for kvDb: %s", kvDbPath), err)
 	}
 
-	res := &LogDb{logDb: logDb, kvDb: kvDb}
+	cacheDb, err := sql.Open("sqlite3", "file:cacheDb?mode=memory")
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for cacheDb: %s", kvDbPath), err)
+	}
+
+	res := &LogDb{
+		logDb:   logDb,
+		kvDb:    kvDb,
+		cacheDb: cacheDb,
+	}
 	if err := res.Init(); err != nil {
 		return nil, err
 	}
 	return res, nil
+}
+
+func (t *LogDb) Close() {
+	if err := t.logDb.Close(); err != nil {
+		log.Warnf("Close DB error: %s", err)
+	}
+	if err := t.kvDb.Close(); err != nil {
+		log.Warnf("Close DB error: %s", err)
+	}
+	if err := t.cacheDb.Close(); err != nil {
+		log.Warnf("Close DB error: %s", err)
+	}
 }
 
 func (t *LogDb) Init() error {
@@ -225,7 +248,7 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 		GROUP BY 
 		    DestIp
 		HAVING
-		    Reqs >= 10
+		    Reqs >= 5
 		ORDER BY
 		    Reqs DESC
 		`,
@@ -349,6 +372,16 @@ func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 	return res.RowsAffected()
 }
 
+func (t *LogDb) CacheDataVacuumClean(maxAge time.Duration) (int64, error) {
+	log.Tracef("Executing CachedDataVacuumClean(%d)", maxAge)
+	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
+	res, err := t.cacheDb.Exec(`DELETE FROM CacheData WHERE Ts < ?`, borderTs)
+	if err != nil {
+		return 0, errors.Join(errors.New("unable to execute CacheDataVacuumClean query"), err)
+	}
+	return res.RowsAffected()
+}
+
 func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	log.Trace("Executing WriteRecordsFromChannel(logCh, wg)")
 	defer log.Infoln("WriteRecordsFromChannel is finished")
@@ -412,13 +445,69 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	}
 }
 
-func (t *LogDb) Close() {
-	if err := t.logDb.Close(); err != nil {
-		log.Warnf("Close DB error: %s", err)
+func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (string, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancelFunc()
+
+	var tx *sql.Tx
+	var err error
+	var _ interface{}
+
+	if tx, err = t.cacheDb.BeginTx(ctx, &sql.TxOptions{}); err != nil {
+		return "", errors.Join(errors.New("unable to start CacheData transaction"), err)
 	}
-	if err := t.kvDb.Close(); err != nil {
-		log.Warnf("Close DB error: %s", err)
+
+	res := tx.QueryRow("SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
+	if err = res.Err(); err != nil {
+		WarnIfErr(tx.Rollback())
+		return "", errors.Join(errors.New("unable to start CacheData query"), err)
 	}
+
+	var value string
+	haveData := true
+	if err = res.Scan(&value); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			WarnIfErr(tx.Rollback())
+			return "", errors.Join(errors.New("unable to get CacheData item"), err)
+		}
+		haveData = false
+	}
+
+	now := time.Now().Unix()
+
+	commitTx := func() error {
+		if err = tx.Commit(); err != nil {
+			return errors.Join(errors.New("unable to commit CacheData transaction"), err)
+		}
+		return nil
+	}
+
+	if haveData {
+		if _, err = tx.Exec("UPDATE CacheData SET Ts = ? WHERE Key == ? LIMIT 1", now, cacheKey); err != nil {
+			WarnIfErr(tx.Rollback())
+			return "", err
+		}
+		if err = commitTx(); err != nil {
+			WarnIfErr(tx.Rollback())
+			return "", err
+		}
+		return value, nil
+	}
+
+	if value, err = getter(); err != nil {
+		WarnIfErr(tx.Rollback())
+		return "", errors.Join(errors.New("unable to get new value"), err)
+	}
+
+	if _, err = tx.Exec("INSERT INTO CacheData (Value, Ts) VALUES (?, ?)", value, now); err != nil {
+		WarnIfErr(tx.Rollback())
+		return "", errors.Join(errors.New("unable to set new value to DB"), err)
+	}
+
+	if err = commitTx(); err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 func (t *LogDb) initSchema() error {
@@ -466,6 +555,21 @@ func (t *LogDb) initSchema() error {
 	for _, tableQuery := range kvTablesSql {
 		if _, err := t.kvDb.Exec(tableQuery); err != nil {
 			return errors.Join(fmt.Errorf("unable to init schema for kvDb, query %s", tableQuery), err)
+		}
+	}
+
+	cacheTablesSql := []string{
+		`CREATE TABLE IF NOT EXISTS CacheData (
+			Key TEXT NOT NULL PRIMARY KEY,
+			Value TEXT NOT NULL,
+			Ts INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS Ts ON CacheData (Ts)`,
+	}
+
+	for _, tableQuery := range cacheTablesSql {
+		if _, err := t.cacheDb.Exec(tableQuery); err != nil {
+			return errors.Join(fmt.Errorf("unable to init schema for cacheDb, query %s", tableQuery), err)
 		}
 	}
 

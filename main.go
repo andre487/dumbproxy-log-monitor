@@ -87,11 +87,21 @@ func main() {
 	)
 
 	scheduler.Schedule(SchedulerJobDescription{
-		TaskName: "VacuumCleanLogRecords",
+		TaskName: "LogRecordsVacuumClean",
 		Interval: 1 * time.Hour,
 		Task: func() error {
 			recsDeleted, err := db.LogRecordsVacuumClean(48 * time.Hour)
-			log.Infof("Vacuum clean records deleted: %d", recsDeleted)
+			log.Infof("Vacuum clean log records deleted: %d", recsDeleted)
+			return err
+		},
+	})
+
+	scheduler.Schedule(SchedulerJobDescription{
+		TaskName: "CacheDataVacuumClean",
+		Interval: 10 * time.Minute,
+		Task: func() error {
+			recsDeleted, err := db.CacheDataVacuumClean(600 * time.Minute)
+			log.Infof("Vacuum clean cache records deleted: %d", recsDeleted)
 			return err
 		},
 	})
@@ -163,7 +173,7 @@ func setupLogger() log.Level {
 		QuoteEmptyFields:       true,
 	})
 
-	level, err := log.ParseLevel(os.Getenv("LOG_LEVEL"))
+	level, err := log.ParseLevel(StrDef(os.Getenv("LOG_LEVEL"), "INFO"))
 	if err != nil {
 		log.Warnf("Invalid log level %s, falling back to INFO", err)
 		level = log.InfoLevel

@@ -2,18 +2,27 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type LogReporter struct {
-	db   *LogDb
-	tmpl *template.Template
+	db       *LogDb
+	resolver *DnsResolver
+	tmpl     *template.Template
 }
 
 func NewLogReporter(db *LogDb) (*LogReporter, error) {
-	res := &LogReporter{db: db}
-	err := res.loadTemplates()
+	resolver, err := NewDnsResolver(db)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &LogReporter{db: db, resolver: resolver}
+	err = res.loadTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("error when loading templates: %s", err)
 	}
@@ -40,12 +49,23 @@ func (t *LogReporter) GenerateReport() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	var newDestHostsData []DestHostsReportData
+	for _, val := range destHostsData {
+		destHost, err := t.resolver.ResolveDomain(val.DestIp)
+		val.DestHost = fmt.Sprintf("<Unresolved: %s>", val.DestIp)
+		if err == nil {
+			val.DestHost = destHost
+		} else if !errors.Is(err, NotResolved) {
+			log.Warnf("Unable to resolve DestIp: %s", err)
+		}
+		newDestHostsData = append(newDestHostsData, val)
+	}
 
 	tplWriter := bytes.NewBufferString("")
 	err = t.tmpl.ExecuteTemplate(tplWriter, "report.html.tmpl", map[string]any{
 		"SrcIpData":     srcIpData,
 		"UserData":      userData,
-		"DestHostsData": destHostsData,
+		"DestHostsData": newDestHostsData,
 	})
 	if err != nil {
 		return "", err
@@ -62,8 +82,7 @@ func (t *LogReporter) GenerateReport() (string, error) {
 		newLastId = max(newLastId, data.LastId)
 	}
 
-	err = t.db.SetLastId(newLastId)
-	if err != nil {
+	if err = t.db.SetLastId(newLastId); err != nil {
 		return "", err
 	}
 
