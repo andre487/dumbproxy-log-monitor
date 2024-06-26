@@ -90,15 +90,9 @@ func NewLogDb(dbDir string) (*LogDb, error) {
 }
 
 func (t *LogDb) Close() {
-	if err := t.logDb.Close(); err != nil {
-		log.Warnf("Close DB error: %s", err)
-	}
-	if err := t.kvDb.Close(); err != nil {
-		log.Warnf("Close DB error: %s", err)
-	}
-	if err := t.cacheDb.Close(); err != nil {
-		log.Warnf("Close DB error: %s", err)
-	}
+	CloseOrWarn(t.logDb)
+	CloseOrWarn(t.kvDb)
+	CloseOrWarn(t.cacheDb)
 }
 
 func (t *LogDb) Init() error {
