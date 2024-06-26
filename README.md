@@ -7,10 +7,10 @@ logs and sending it to an email.
 
 ```
 Usage of ./dumbproxy-log-monitor:
-  -dbPath string
-    	DB path (default "/tmp/dumbproxy-log-monitor-test.db")
+  -dbDir string
+    	DB directory (default "/tmp/dumbproxy-log-monitor-test-db")
   -logCmd string
-    	CMD for logs (default "sudo journald -fu dumbproxy.service")
+    	CMD for logs (default "sudo journalctl -fu dumbproxy.service")
   -logCmdDir string
     	CWD for log CMD (default ".")
   -mailerConfig string
@@ -21,6 +21,8 @@ Usage of ./dumbproxy-log-monitor:
     	Email to send reports
   -reportTime string
     	Report UTC time in format 22:00:00 (default "22:00:00")
+  -scheduleInterval duration
+    	Interval for scheduler tasks scan (default 2s)
 ```
 
 ## Configs
