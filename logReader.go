@@ -41,7 +41,7 @@ func NewLogReader(params LogReaderParams) (*LogReader, error) {
 	return res, nil
 }
 
-func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData2) {
+func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData) {
 	defer log.Infoln("ReadLogStreamToChannel is finished")
 	defer close(logCh)
 
@@ -49,7 +49,7 @@ func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData2) {
 	for t.running {
 		scanner := bufio.NewScanner(t.stdout)
 		for t.running && scanner.Scan() {
-			data, err := ParseLogLine2(scanner.Text())
+			data, err := ParseLogLine(scanner.Text())
 			if err == nil {
 				logCh <- data
 				runNum = 0

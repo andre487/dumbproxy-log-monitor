@@ -349,7 +349,7 @@ func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 	return res.RowsAffected()
 }
 
-func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData2) {
+func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	log.Trace("Executing WriteRecordsFromChannel(logCh, wg)")
 	defer log.Infoln("WriteRecordsFromChannel is finished")
 

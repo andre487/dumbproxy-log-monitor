@@ -98,7 +98,7 @@ func main() {
 	})
 
 	var workersGroup sync.WaitGroup
-	logChan := make(chan *LogLineData2)
+	logChan := make(chan *LogLineData)
 	go func() {
 		reader.ReadLogStreamToChannel(logChan)
 		if err := db.SetLastHandledLogTimeNow(); err != nil {
