@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,8 +26,8 @@ func Must1[T interface{}](arg T, err error) T {
 	return arg
 }
 
-func AutoClose(close func() error) {
-	if err := close(); err != nil {
+func CloseOrWarn(closer io.Closer) {
+	if err := closer.Close(); err != nil {
 		log.Warnf("Error when closing: %s", err)
 	}
 }

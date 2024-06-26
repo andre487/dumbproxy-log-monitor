@@ -415,7 +415,7 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	if err != nil {
 		log.Panicf("unable to prepare insert query in WriteRecordsFromChannel: %s", err)
 	}
-	defer AutoClose(insertQuery.Close)
+	defer CloseOrWarn(insertQuery)
 
 	for item := range logCh {
 		_, err := insertQuery.Exec(
