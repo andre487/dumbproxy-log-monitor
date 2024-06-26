@@ -13,7 +13,7 @@ import (
 )
 
 type LogReaderParams struct {
-	JournalDCommand     string
+	LogProducerCommand  string
 	ExecDir             string
 	ProcessRestartLimit int
 	LastHandledTime     time.Time
@@ -27,8 +27,8 @@ type LogReader struct {
 }
 
 func NewLogReader(params LogReaderParams) (*LogReader, error) {
-	if params.JournalDCommand == "" {
-		params.JournalDCommand = "sudo journalctl -fu dumbproxy.service"
+	if params.LogProducerCommand == "" {
+		params.LogProducerCommand = "sudo journalctl -fu dumbproxy.service"
 	}
 	if params.ProcessRestartLimit == 0 {
 		params.ProcessRestartLimit = 3
@@ -41,7 +41,7 @@ func NewLogReader(params LogReaderParams) (*LogReader, error) {
 	return res, nil
 }
 
-func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData) {
+func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData2) {
 	defer log.Infoln("ReadLogStreamToChannel is finished")
 	defer close(logCh)
 
@@ -49,7 +49,7 @@ func (t *LogReader) ReadLogStreamToChannel(logCh chan *LogLineData) {
 	for t.running {
 		scanner := bufio.NewScanner(t.stdout)
 		for t.running && scanner.Scan() {
-			data, err := ParseLogLine(scanner.Text())
+			data, err := ParseLogLine2(scanner.Text())
 			if err == nil {
 				logCh <- data
 				runNum = 0
@@ -118,7 +118,7 @@ func (t *LogReader) IsAlive() bool {
 }
 
 func (t *LogReader) launchProcess() error {
-	cmdParts := strings.Split(t.JournalDCommand, " ")
+	cmdParts := strings.Split(t.LogProducerCommand, " ")
 	cmdParts = append(cmdParts, "--since", t.LastHandledTime.Format("2006-01-02 15:04:05"))
 	log.Infof("Launching log process: %v", cmdParts)
 

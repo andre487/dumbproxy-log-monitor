@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,7 +16,7 @@ import (
 )
 
 type cliArgs struct {
-	dbPath           string
+	dbDir            string
 	logCmd           string
 	logCmdDir        string
 	reportTime       string
@@ -41,13 +40,13 @@ func main() {
 		mailer = Must1(NewMailer(args.mailerConfigPath))
 	}
 
-	db := Must1(NewLogDb(args.dbPath))
+	db := Must1(NewLogDb(args.dbDir))
 	defer db.Close()
 
 	reader := Must1(NewLogReader(LogReaderParams{
-		JournalDCommand: args.logCmd,
-		ExecDir:         args.logCmdDir,
-		LastHandledTime: Must1(db.GetLastHandledTime()),
+		LogProducerCommand: args.logCmd,
+		ExecDir:            args.logCmdDir,
+		LastHandledTime:    Must1(db.GetLastHandledTime()),
 	}))
 	scheduler := Must1(NewScheduler(db, args.scheduleInterval))
 	reporter := Must1(NewLogReporter(db))
@@ -99,7 +98,7 @@ func main() {
 	})
 
 	var workersGroup sync.WaitGroup
-	logChan := make(chan *LogLineData)
+	logChan := make(chan *LogLineData2)
 	go func() {
 		reader.ReadLogStreamToChannel(logChan)
 		if err := db.SetLastHandledLogTimeNow(); err != nil {
@@ -196,7 +195,7 @@ func setupLogger() log.Level {
 
 func getArgs() cliArgs {
 	var args cliArgs
-	flag.StringVar(&args.dbPath, "dbPath", "/tmp/dumbproxy-log-monitor-test.db", "DB path")
+	flag.StringVar(&args.dbDir, "dbDir", "/tmp/dumbproxy-log-monitor-test-db", "DB directory")
 	flag.StringVar(&args.logCmd, "logCmd", "sudo journalctl -fu dumbproxy.service", "CMD for logs")
 	flag.StringVar(&args.logCmdDir, "logCmdDir", ".", "CWD for log CMD")
 	flag.StringVar(&args.reportTime, "reportTime", "22:00:00", "Report UTC time in format 22:00:00")
@@ -209,30 +208,24 @@ func getArgs() cliArgs {
 }
 
 func handleArgs(args *cliArgs) {
-	if args.dbPath == "" {
-		log.Fatalln("-db-path is required")
-	}
-	dbDir := path.Dir(args.dbPath)
-	if _, err := os.Stat(dbDir); err != nil && os.IsNotExist(err) {
-		if err := os.MkdirAll(dbDir, 0755); err != nil {
-			log.Fatalf("Could not create DB dir: %v", err)
-		}
+	if args.dbDir == "" {
+		log.Fatalln("-dbDir is required")
 	}
 
 	if args.logCmd == "" {
-		log.Fatalln("-log-cmd is required")
+		log.Fatalln("-logCmd is required")
 	}
 
 	matches := Must1(regexp.Compile("^(-?\\d{1,2}):(-?\\d{1,2}):(-?\\d{1,2})$")).FindStringSubmatch(args.reportTime)
 	if len(matches) != 4 {
-		log.Fatalf("Invalid value for -report-time: %s", args.reportTime)
+		log.Fatalf("Invalid value for -reportTime: %s", args.reportTime)
 	}
 	args.reportHour = Must1(strconv.Atoi(matches[1]))
 	args.reportMinute = Must1(strconv.Atoi(matches[2]))
 	args.reportSecond = Must1(strconv.Atoi(matches[3]))
 
 	if _, err := os.Stat(args.mailerConfigPath); err != nil {
-		log.Fatalf("Unable to read -mailer-config: %s", err)
+		log.Fatalf("Unable to read -mailerConfig: %s", err)
 	}
 
 	scheduleMinInterval := 2 * time.Second
