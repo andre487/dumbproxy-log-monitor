@@ -27,8 +27,6 @@ var logLineCantDialRe = regexp.MustCompile(".+Can't satisfy \\S+ request: dial t
 var internalErrorRe = regexp.MustCompile(".*No such file or directory|Main process exited|Failed with result 'exit-code'.*")
 var serviceMessageRe = regexp.MustCompile(".+Stopping Dumb Proxy|Deactivated successfully|Started Dumb Proxy|Stopped Dumb Proxy|dumbproxy.service: Consumed|reloading password file|password file reloaded|Starting proxy server|Proxy server started.+")
 
-type LogLineType uint64
-
 type SystemDLogLineRecord struct {
 	Month     string `regroup:"month"`
 	Day       int    `regroup:"day"`
@@ -57,6 +55,8 @@ type DumbProxyLogLineRecord struct {
 	LogRecord string `regroup:"logRecord"`
 }
 
+type LogLineType uint64
+
 const (
 	LogLineTypeUnmatched LogLineType = iota
 	LogLineTypeOtherUnit
@@ -70,6 +70,7 @@ const (
 	LogLineTypeRuntimeLog
 	LogLineTypeAuthModuleLog
 
+	// LogLineTypeGeneral TODO: REMOVE
 	LogLineTypeGeneral
 	LogLineTypeRequest
 	LogLineTypeError
@@ -79,6 +80,31 @@ const (
 	LogLineTypeInternalError
 	LogLintTypeJustMessage
 )
+
+func (t LogLineType) String() string {
+	switch t {
+	case LogLineTypeUnmatched:
+		return "LogLineTypeUnmatched"
+	case LogLineTypeOtherUnit:
+		return "LogLineTypeOtherUnit"
+	case LogLineTypeProxyUnknown:
+		return "LogLineTypeProxyUnknown"
+	case LogLineTypeProxyRequest:
+		return "LogLineTypeProxyRequest"
+	case LogLineTypeProxyRequestHttpInfo:
+		return "LogLineTypeProxyRequestHttpInfo"
+	case LogLineTypeProxyRequestError:
+		return "LogLineTypeProxyRequestError"
+	case LogLineTypeHttpSrvError:
+		return "LogLineTypeHttpSrvError"
+	case LogLineTypeRuntimeLog:
+		return "LogLineTypeHttpSrvError"
+	case LogLineTypeAuthModuleLog:
+		return "LogLineTypeAuthModuleLog"
+	default:
+		return "LogLineType__UNKNOWN"
+	}
+}
 
 var monthMap = map[string]time.Month{
 	"Jan": time.January,

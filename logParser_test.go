@@ -258,6 +258,9 @@ func TestBigLog2(t *testing.T) {
 		if res.LogLineType == LogLineTypeUnmatched || res.LogLineType == LogLineTypeProxyUnknown {
 			t.Fatalf("wrond line tyoe %v for line %s", res.LogLineType, logLine)
 		}
+		if res.LogLineType.String() == "LogLineType__UNKNOWN" {
+			t.Fatalf("unknown log line tyoe %v for line %s", res.LogLineType, logLine)
+		}
 	}
 }
 
