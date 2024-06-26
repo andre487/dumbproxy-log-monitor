@@ -2,11 +2,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 )
-
-var NotResolved = errors.New("not resolved")
 
 type DnsResolver struct {
 	db *LogDb
@@ -22,19 +21,21 @@ func (t *DnsResolver) ResolveDomain(ipAddr string) (string, error) {
 	}
 
 	return t.db.GetCached("DnsResolver:ResolveDomain:"+ipAddr, func() (string, error) {
+		finalName := fmt.Sprintf("<Unresolved: %s>", ipAddr)
+
 		vals, err := net.LookupAddr(ipAddr)
 		if err != nil {
 			if strings.Contains(err.Error(), "no such host") {
-				return "", NotResolved
+				return finalName, nil
 			}
-			return "", errors.Join(errors.New("unable to resolve domain"), err)
+			return finalName, errors.Join(errors.New("unable to resolve domain"), err)
 		}
 
 		if len(vals) == 0 {
-			return "", NotResolved
+			return finalName, nil
 		}
 
-		finalName := vals[0]
+		finalName = vals[0]
 		for idx, val := range vals {
 			if idx > 0 && len(val) < len(finalName) {
 				finalName = val

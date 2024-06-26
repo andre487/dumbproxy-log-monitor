@@ -190,7 +190,7 @@ func getArgs() cliArgs {
 	flag.StringVar(&args.logCmdDir, "logCmdDir", ".", "CWD for log CMD")
 	flag.StringVar(&args.reportTime, "reportTime", "22:00:00", "Report UTC time in format 22:00:00")
 	flag.StringVar(&args.reportMail, "reportMail", "", "Email to send reports")
-	flag.DurationVar(&args.scheduleInterval, "scheduleInterval", 10*time.Second, "Interval for scheduler tasks scan")
+	flag.DurationVar(&args.scheduleInterval, "scheduleInterval", 2*time.Second, "Interval for scheduler tasks scan")
 	flag.StringVar(&args.mailerConfigPath, "mailerConfig", "secrets/mailer.json", "Config for mailer")
 	flag.BoolVar(&args.printReport, "printReport", false, "Print report to STDOUT")
 	flag.Parse()

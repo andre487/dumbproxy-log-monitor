@@ -493,7 +493,7 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 		return "", errors.Join(errors.New("unable to get new value"), err)
 	}
 
-	if _, err = tx.Exec("INSERT INTO CacheData (Value, Ts) VALUES (?, ?)", value, now); err != nil {
+	if _, err = tx.Exec("INSERT INTO CacheData (Key, Value, Ts) VALUES (?, ?, ?)", cacheKey, value, now); err != nil {
 		WarnIfErr(tx.Rollback())
 		return "", errors.Join(errors.New("unable to set new value to DB"), err)
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"html/template"
 
@@ -51,11 +50,8 @@ func (t *LogReporter) GenerateReport() (string, error) {
 	}
 	var newDestHostsData []DestHostsReportData
 	for _, val := range destHostsData {
-		destHost, err := t.resolver.ResolveDomain(val.DestIp)
-		val.DestHost = fmt.Sprintf("<Unresolved: %s>", val.DestIp)
-		if err == nil {
-			val.DestHost = destHost
-		} else if !errors.Is(err, NotResolved) {
+		val.DestHost, err = t.resolver.ResolveDomain(val.DestIp)
+		if err != nil {
 			log.Warnf("Unable to resolve DestIp: %s", err)
 		}
 		newDestHostsData = append(newDestHostsData, val)
