@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -160,32 +159,13 @@ func setupLogger() log.Level {
 		FullTimestamp:          true,
 		TimestampFormat:        "2006-01-02 15:04:05",
 		DisableLevelTruncation: true,
+		PadLevelText:           true,
+		QuoteEmptyFields:       true,
 	})
 
-	var level log.Level
-	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
-	case "trace":
-		level = log.TraceLevel
-		break
-	case "debug":
-		level = log.DebugLevel
-		break
-	case "info":
-		level = log.InfoLevel
-		break
-	case "warn":
-		level = log.WarnLevel
-		break
-	case "error":
-		level = log.ErrorLevel
-		break
-	case "fatal":
-		level = log.FatalLevel
-		break
-	case "panic":
-		level = log.PanicLevel
-		break
-	default:
+	level, err := log.ParseLevel(os.Getenv("LOG_LEVEL"))
+	if err != nil {
+		log.Warnf("Invalid log level %s, falling back to INFO", err)
 		level = log.InfoLevel
 	}
 	log.SetLevel(level)
