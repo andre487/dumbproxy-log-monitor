@@ -26,4 +26,4 @@ go.work.sum
 *.iml
 data
 secrets
-./dumbproxy-log-monitor
+dumbproxy-log-monitor
