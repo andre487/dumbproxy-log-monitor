@@ -320,13 +320,35 @@ func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 	return res.RowsAffected()
 }
 
-func (t *LogDb) CacheDataVacuumClean(maxAge time.Duration) (int64, error) {
-	log.Tracef("Executing CachedDataVacuumClean(%d)", maxAge)
+func (t *LogDb) CacheDataVacuumClean(maxItems int) (int64, error) {
+	log.Tracef("Executing CachedDataVacuumClean()")
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancel()
 
-	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
-	res, err := t.cacheDb.ExecContext(ctx, `DELETE FROM CacheData WHERE Ts < ?`, borderTs)
+	now := time.Now().Unix()
+	res, err := t.cacheDb.ExecContext(
+		ctx,
+		`
+		DELETE FROM 
+		   CacheData 
+	   	WHERE 
+	   	    ExpiresTs >= ? 
+			OR Key IN (
+				SELECT 
+					Key 
+				FROM 
+					CacheData
+				ORDER BY
+	   				ExpiresTs
+	   			LIMIT
+	   				-1
+	   			OFFSET
+	   				?
+			) 
+		`,
+		now,
+		maxItems,
+	)
 	if err != nil {
 		return 0, errors.Join(errors.New("unable to execute CacheDataVacuumClean query"), err)
 	}
@@ -395,7 +417,7 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	}
 }
 
-func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (string, error) {
+func (t *LogDb) GetCached(cacheKey string, ttl time.Duration, getter func() (string, error)) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancel()
 
@@ -407,9 +429,16 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 		return "", errors.Join(errors.New("unable to start CacheData transaction"), err)
 	}
 
-	var value string
-	err = tx.GetContext(ctx, &value, "SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
+	now := time.Now().Unix()
+	newExpiresTs := now + int64(ttl/time.Second)
 
+	curRes := struct {
+		Value     string `db:"Value"`
+		ExpiresTs int64  `db:"ExpiresTs"`
+	}{}
+	err = tx.GetContext(ctx, &curRes, "SELECT Value, ExpiresTs FROM CacheData WHERE Key == ? AND ExpiresTs < ? LIMIT 1", cacheKey, now)
+
+	value := curRes.Value
 	haveData := true
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -419,8 +448,6 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 		haveData = false
 	}
 
-	now := time.Now().Unix()
-
 	commitTx := func() error {
 		if err = tx.Commit(); err != nil {
 			return errors.Join(errors.New("unable to commit CacheData transaction"), err)
@@ -429,7 +456,7 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 	}
 
 	if haveData {
-		if _, err = tx.ExecContext(ctx, "UPDATE CacheData SET Ts = ? WHERE Key == ?", now, cacheKey); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE CacheData SET ExpiresTs = ? WHERE Key == ?", newExpiresTs, cacheKey); err != nil {
 			WarnIfErr(tx.Rollback())
 			return "", errors.Join(errors.New("unable to start CacheData update"), err)
 		}
@@ -445,7 +472,7 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 		return "", errors.Join(errors.New("unable to get new value"), err)
 	}
 
-	if _, err = tx.ExecContext(ctx, "INSERT INTO CacheData (Key, Value, Ts) VALUES (?, ?, ?)", cacheKey, value, now); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO CacheData (Key, Value, ExpiresTs) VALUES (?, ?, ?)", cacheKey, value, newExpiresTs); err != nil {
 		WarnIfErr(tx.Rollback())
 		return "", errors.Join(errors.New("unable to set new value to DB"), err)
 	}
@@ -511,9 +538,10 @@ func (t *LogDb) initSchema() error {
 			`CREATE TABLE IF NOT EXISTS CacheData (
 				Key TEXT NOT NULL PRIMARY KEY,
 				Value TEXT NOT NULL,
-				Ts INTEGER NOT NULL
+				ExpiresTs INTEGER NOT NULL
 			)`,
-			`CREATE INDEX IF NOT EXISTS Ts ON CacheData (Ts)`,
+			`CREATE INDEX IF NOT EXISTS ExpiresTs ON CacheData (ExpiresTs)`,
+			`CREATE INDEX IF NOT EXISTS Key_ExpiresTs ON CacheData (Key, ExpiresTs)`,
 		},
 	)
 	if err != nil {
