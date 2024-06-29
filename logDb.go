@@ -22,9 +22,9 @@ type LogDb struct {
 
 type BasicGroupReportData struct {
 	Reqs      int    `db:"Reqs"`
-	LastId    int    `db:"LastId"`
-	FirstTs   int    `db:"FirstTs"`
-	LastTs    int    `db:"LastTs"`
+	LastId    uint64 `db:"LastId"`
+	FirstTs   int64  `db:"FirstTs"`
+	LastTs    int64  `db:"LastTs"`
 	FirstTime string `db:"FirstTime"`
 	LastTime  string `db:"LastTime"`
 }
@@ -215,7 +215,7 @@ func (t *LogDb) GetLastHandledTime() (time.Time, error) {
 	return tm, nil
 }
 
-func (t *LogDb) SetLastId(lastId int) error {
+func (t *LogDb) SetLastId(lastId uint64) error {
 	log.Tracef("Executing SetLastId(%d)", lastId)
 	return t.SetKvRecord("LastId", lastId)
 }

@@ -55,7 +55,7 @@ func (t *LogReporter) GenerateReport() (string, error) {
 		return "", err
 	}
 
-	var newLastId int
+	var newLastId uint64
 	for _, data := range srcIpData {
 		newLastId = max(newLastId, data.LastId)
 	}
