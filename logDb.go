@@ -258,18 +258,12 @@ func (t *LogDb) GetLastId() (int, error) {
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 	log.Tracef("Executing GetKvIntRecord(%s)", key)
 
-	res := t.kvDb.QueryRowx(`SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name=? LIMIT 1`, key)
-	err := res.Err()
-	if err != nil {
-		return 0, errors.Join(errors.New("unable to execute GetKvIntRecord query"), err)
-	}
-
 	var val int
-	err = res.Scan(&val)
+	err := t.kvDb.Get(&val, `SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name=? LIMIT 1`, key)
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	} else if err != nil {
-		return 0, errors.Join(errors.New("unable to fetch element in GetKvIntRecord"), err)
+		return 0, errors.Join(errors.New("unable to GetKvIntRecord"), err)
 	}
 
 	return val, nil
@@ -278,18 +272,12 @@ func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 	log.Tracef("Executing GetKvStrRecord(%s)", key)
 
-	res := t.kvDb.QueryRowx(`SELECT Value FROM KvData WHERE Name=? LIMIT 1`, key)
-	err := res.Err()
-	if err != nil {
-		return "", errors.Join(errors.New("unable to execute GetKvStrRecord query"), err)
-	}
-
 	var val string
-	err = res.Scan(&val)
+	err := t.kvDb.Get(&val, `SELECT Value FROM KvData WHERE Name=? LIMIT 1`, key)
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	} else if err != nil {
-		return "", errors.Join(errors.New("unable to fetch element in GetKvStrRecord"), err)
+		return "", errors.Join(errors.New("unable to GetKvIntRecord"), err)
 	}
 
 	return val, nil
@@ -398,15 +386,11 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 		return "", errors.Join(errors.New("unable to start CacheData transaction"), err)
 	}
 
-	res := tx.QueryRowx("SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
-	if err = res.Err(); err != nil {
-		WarnIfErr(tx.Rollback())
-		return "", errors.Join(errors.New("unable to start CacheData query"), err)
-	}
-
 	var value string
+	err = tx.Get(&value, "SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
+
 	haveData := true
-	if err = res.Scan(&value); err != nil {
+	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			WarnIfErr(tx.Rollback())
 			return "", errors.Join(errors.New("unable to get CacheData item"), err)
