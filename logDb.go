@@ -45,6 +45,13 @@ type DestHostsReportData struct {
 	DestHost string
 }
 
+type LogLineDataInsertData struct {
+	*LogLineData
+	Ts          int64  `db:"Ts"`
+	LogTime     int64  `db:"LogTime"`
+	LogLineType string `db:"LogLineType"`
+}
+
 const QueryTimeout = 10 * time.Second
 
 func NewLogDb(dbDir string) (*LogDb, error) {
@@ -587,29 +594,11 @@ func insertLogRecord(insertQuery *sqlx.NamedStmt, item *LogLineData) error {
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancel()
 
-	_, err := insertQuery.ExecContext(
-		ctx,
-		map[string]interface{}{
-			"Ts":             time.Now().Unix(),
-			"LogLineType":    item.LogLineType.String(),
-			"LogLine":        item.LogLine,
-			"LogTime":        item.LogTime.Unix(),
-			"IsError":        item.IsError,
-			"HasRequestInfo": item.HasRequestInfo,
-			"Host":           item.Host,
-			"Pid":            item.Pid,
-			"FileName":       item.FileName,
-			"FileLine":       item.FileLine,
-			"SrcIp":          item.SrcIp,
-			"DestIp":         item.DestIp,
-			"DestPort":       item.DestPort,
-			"Username":       item.Username,
-			"Proto":          item.Proto,
-			"Method":         item.Method,
-			"Url":            item.Url,
-			"Status":         item.Status,
-			"ErrorMessage":   item.ErrorMessage,
-		},
-	)
+	_, err := insertQuery.ExecContext(ctx, LogLineDataInsertData{
+		LogLineData: item,
+		Ts:          time.Now().Unix(),
+		LogTime:     item.LogTime.Unix(),
+		LogLineType: item.LogLineType.String(),
+	})
 	return err
 }
