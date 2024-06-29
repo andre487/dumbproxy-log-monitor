@@ -113,11 +113,9 @@ func (t *LogDb) Init() error {
 func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	log.Tracef("Executing GetSrcIpReportData(%d)", fromId)
 
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
-
-	res, err := t.logDb.QueryxContext(
-		ctx,
+	var items []SrcIpReportData
+	err := t.logDb.Select(
+		&items,
 		`
 		SELECT 
 		    SrcIp,
@@ -140,40 +138,22 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 		fromId,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error when executing GetSrcIpReportData query: %s", err)
-	}
-	defer func() {
-		log.Trace("Closing query for GetSrcIpReportData")
-		if err := res.Close(); err != nil {
-			log.Warnf("Unable to close query for GetSrcIpReportData: %s", err)
-		}
-	}()
-
-	var items []SrcIpReportData
-	for res.Next() {
-		var curData SrcIpReportData
-		if err := res.StructScan(&curData); err != nil {
-			return nil, errors.Join(errors.New("error when fetching element in GetSrcIpReportData"), err)
-		}
-		if curData.SrcIp == "" {
-			curData.SrcIp = "<empty>"
-		}
-		curData.FirstTime = time.Unix(int64(curData.FirstTs), 0).UTC().Format(time.RFC3339)
-		curData.LastTime = time.Unix(int64(curData.LastTs), 0).UTC().Format(time.RFC3339)
-		items = append(items, curData)
+		return nil, errors.Join(errors.New("error when GetSrcIpReportData"), err)
 	}
 
+	for i := 0; i < len(items); i++ {
+		items[i].SrcIp = StrDef(items[i].SrcIp, "<empty>")
+		setTimes(&items[i].BasicGroupReportData)
+	}
 	return items, nil
 }
 
 func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	log.Tracef("Executing GetUsersReportData(%d)", fromId)
 
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
-
-	res, err := t.logDb.QueryxContext(
-		ctx,
+	var items []UsersReportData
+	err := t.logDb.Select(
+		&items,
 		`
 		SELECT 
 		    Username,
@@ -194,40 +174,22 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 		fromId,
 	)
 	if err != nil {
-		return nil, errors.Join(errors.New("error when executing GetUsersReportData query"), err)
-	}
-	defer func() {
-		log.Trace("Closing query for GetUsersReportData")
-		if err := res.Close(); err != nil {
-			log.Warnf("Unable to close query for GetUsersReportData: %s", err)
-		}
-	}()
-
-	var items []UsersReportData
-	for res.Next() {
-		var curData UsersReportData
-		if err := res.StructScan(&curData); err != nil {
-			return nil, errors.Join(errors.New("error when fetching element in GetUsersReportData"), err)
-		}
-		if curData.Username == "" {
-			curData.Username = "<empty>"
-		}
-		curData.FirstTime = time.Unix(int64(curData.FirstTs), 0).UTC().Format(time.RFC3339)
-		curData.LastTime = time.Unix(int64(curData.LastTs), 0).UTC().Format(time.RFC3339)
-		items = append(items, curData)
+		return nil, errors.Join(errors.New("error when GetUsersReportData"), err)
 	}
 
+	for i := 0; i < len(items); i++ {
+		items[i].Username = StrDef(items[i].Username, "<empty>")
+		setTimes(&items[i].BasicGroupReportData)
+	}
 	return items, nil
 }
 
 func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error) {
 	log.Tracef("Executing GetDestHostsReportData(%d)", fromId)
 
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
-
-	res, err := t.logDb.QueryxContext(
-		ctx,
+	var items []DestHostsReportData
+	err := t.logDb.Select(
+		&items,
 		`
 		SELECT 
 		    DestIp,
@@ -250,29 +212,13 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 		fromId,
 	)
 	if err != nil {
-		return nil, errors.Join(errors.New("error when executing GetDestHostsReportData query"), err)
-	}
-	defer func() {
-		log.Trace("Closing query for GetDestHostsReportData")
-		if err := res.Close(); err != nil {
-			log.Warnf("Unable to close query for GetDestHostsReportData: %s", err)
-		}
-	}()
-
-	var items []DestHostsReportData
-	for res.Next() {
-		var curData DestHostsReportData
-		if err := res.StructScan(&curData); err != nil {
-			return nil, errors.Join(errors.New("error when fetching element in GetDestHostsReportData"), err)
-		}
-		if curData.DestIp == "" {
-			curData.DestIp = "<empty>"
-		}
-		curData.FirstTime = time.Unix(int64(curData.FirstTs), 0).UTC().Format(time.RFC3339)
-		curData.LastTime = time.Unix(int64(curData.LastTs), 0).UTC().Format(time.RFC3339)
-		items = append(items, curData)
+		return nil, errors.Join(errors.New("error when GetDestHostsReportData"), err)
 	}
 
+	for i := 0; i < len(items); i++ {
+		items[i].DestIp = StrDef(items[i].DestIp, "<empty>")
+		setTimes(&items[i].BasicGroupReportData)
+	}
 	return items, nil
 }
 
@@ -590,4 +536,9 @@ func (t *LogDb) checkSchemaVersion() error {
 	}
 
 	return nil
+}
+
+func setTimes(val *BasicGroupReportData) {
+	val.FirstTime = time.Unix(int64(val.FirstTs), 0).UTC().Format(time.RFC3339)
+	val.LastTime = time.Unix(int64(val.LastTs), 0).UTC().Format(time.RFC3339)
 }
