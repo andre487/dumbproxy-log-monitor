@@ -21,27 +21,27 @@ type LogDb struct {
 }
 
 type BasicGroupReportData struct {
-	Reqs      int
-	LastId    int
-	FirstTs   int
-	LastTs    int
-	FirstTime string
-	LastTime  string
+	Reqs      int    `db:"Reqs"`
+	LastId    int    `db:"LastId"`
+	FirstTs   int    `db:"FirstTs"`
+	LastTs    int    `db:"LastTs"`
+	FirstTime string `db:"FirstTime"`
+	LastTime  string `db:"LastTime"`
 }
 
 type SrcIpReportData struct {
 	BasicGroupReportData
-	SrcIp string
+	SrcIp string `db:"SrcIp"`
 }
 
 type UsersReportData struct {
 	BasicGroupReportData
-	Username string
+	Username string `db:"Username"`
 }
 
 type DestHostsReportData struct {
 	BasicGroupReportData
-	DestIp   string
+	DestIp   string `db:"DestIp"`
 	DestHost string
 }
 
@@ -74,7 +74,7 @@ func NewLogDb(dbDir string) (*LogDb, error) {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for kvDb: %s", kvDbPath), err)
 	}
 
-	cacheDb, err := sqlx.Open("sqlite3", ":memory:")
+	cacheDb, err := sqlx.Open("sqlite3", "file:cacheDb?mode=memory")
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for cacheDb: %s", kvDbPath), err)
 	}
@@ -116,7 +116,7 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
-	res, err := t.logDb.QueryContext(
+	res, err := t.logDb.QueryxContext(
 		ctx,
 		`
 		SELECT 
@@ -152,8 +152,8 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	var items []SrcIpReportData
 	for res.Next() {
 		var curData SrcIpReportData
-		if err := res.Scan(&curData.SrcIp, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
-			return nil, fmt.Errorf("error when fetching element in GetUsersReportData: %s", err)
+		if err := res.StructScan(&curData); err != nil {
+			return nil, errors.Join(errors.New("error when fetching element in GetSrcIpReportData"), err)
 		}
 		if curData.SrcIp == "" {
 			curData.SrcIp = "<empty>"
@@ -172,7 +172,7 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
-	res, err := t.logDb.QueryContext(
+	res, err := t.logDb.QueryxContext(
 		ctx,
 		`
 		SELECT 
@@ -206,7 +206,7 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	var items []UsersReportData
 	for res.Next() {
 		var curData UsersReportData
-		if err := res.Scan(&curData.Username, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
+		if err := res.StructScan(&curData); err != nil {
 			return nil, errors.Join(errors.New("error when fetching element in GetUsersReportData"), err)
 		}
 		if curData.Username == "" {
@@ -226,7 +226,7 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
-	res, err := t.logDb.QueryContext(
+	res, err := t.logDb.QueryxContext(
 		ctx,
 		`
 		SELECT 
@@ -262,7 +262,7 @@ func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error
 	var items []DestHostsReportData
 	for res.Next() {
 		var curData DestHostsReportData
-		if err := res.Scan(&curData.DestIp, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
+		if err := res.StructScan(&curData); err != nil {
 			return nil, errors.Join(errors.New("error when fetching element in GetDestHostsReportData"), err)
 		}
 		if curData.DestIp == "" {
@@ -312,7 +312,7 @@ func (t *LogDb) GetLastId() (int, error) {
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 	log.Tracef("Executing GetKvIntRecord(%s)", key)
 
-	res := t.kvDb.QueryRow(`SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name=? LIMIT 1`, key)
+	res := t.kvDb.QueryRowx(`SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name=? LIMIT 1`, key)
 	err := res.Err()
 	if err != nil {
 		return 0, errors.Join(errors.New("unable to execute GetKvIntRecord query"), err)
@@ -332,7 +332,7 @@ func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 	log.Tracef("Executing GetKvStrRecord(%s)", key)
 
-	res := t.kvDb.QueryRow(`SELECT Value FROM KvData WHERE Name=? LIMIT 1`, key)
+	res := t.kvDb.QueryRowx(`SELECT Value FROM KvData WHERE Name=? LIMIT 1`, key)
 	err := res.Err()
 	if err != nil {
 		return "", errors.Join(errors.New("unable to execute GetKvStrRecord query"), err)
@@ -444,15 +444,15 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancelFunc()
 
-	var tx *sql.Tx
+	var tx *sqlx.Tx
 	var err error
 	var _ interface{}
 
-	if tx, err = t.cacheDb.BeginTx(ctx, &sql.TxOptions{}); err != nil {
+	if tx, err = t.cacheDb.BeginTxx(ctx, &sql.TxOptions{}); err != nil {
 		return "", errors.Join(errors.New("unable to start CacheData transaction"), err)
 	}
 
-	res := tx.QueryRow("SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
+	res := tx.QueryRowx("SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
 	if err = res.Err(); err != nil {
 		WarnIfErr(tx.Rollback())
 		return "", errors.Join(errors.New("unable to start CacheData query"), err)
@@ -478,9 +478,9 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 	}
 
 	if haveData {
-		if _, err = tx.Exec("UPDATE CacheData SET Ts = ? WHERE Key == ? LIMIT 1", now, cacheKey); err != nil {
+		if _, err = tx.Exec("UPDATE CacheData SET Ts = ? WHERE Key == ?", now, cacheKey); err != nil {
 			WarnIfErr(tx.Rollback())
-			return "", err
+			return "", errors.Join(errors.New("unable to start CacheData update"), err)
 		}
 		if err = commitTx(); err != nil {
 			WarnIfErr(tx.Rollback())
@@ -539,7 +539,7 @@ func (t *LogDb) initSchema() error {
 	}
 
 	if err := t.execInitQueries(
-		t.logDb,
+		t.kvDb,
 		[]string{
 			`CREATE TABLE IF NOT EXISTS KvData (
 				Name TEXT NOT NULL PRIMARY KEY,
@@ -552,7 +552,7 @@ func (t *LogDb) initSchema() error {
 	}
 
 	if err := t.execInitQueries(
-		t.logDb,
+		t.cacheDb,
 		[]string{
 			`CREATE TABLE IF NOT EXISTS CacheData (
 				Key TEXT NOT NULL PRIMARY KEY,
