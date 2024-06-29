@@ -31,18 +31,13 @@ type BasicGroupReportData struct {
 
 type SrcIpReportData struct {
 	BasicGroupReportData
-	SrcIp string `db:"SrcIp"`
+	SrcIp   string `db:"SrcIp"`
+	SrcHost string
 }
 
 type UsersReportData struct {
 	BasicGroupReportData
 	Username string `db:"Username"`
-}
-
-type DestHostsReportData struct {
-	BasicGroupReportData
-	DestIp   string `db:"DestIp"`
-	DestHost string
 }
 
 type LogLineDataInsertData struct {
@@ -192,47 +187,6 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 
 	for i := 0; i < len(items); i++ {
 		items[i].Username = StrDef(items[i].Username, "<empty>")
-		setTimes(&items[i].BasicGroupReportData)
-	}
-	return items, nil
-}
-
-func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error) {
-	log.Tracef("Executing GetDestHostsReportData(%d)", fromId)
-	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancel()
-
-	var items []DestHostsReportData
-	err := t.logDb.SelectContext(
-		ctx,
-		&items,
-		`
-		SELECT 
-		    DestIp,
-		    COUNT(*) AS Reqs,
-		    MAX(Id) AS LastId,
-		    MIN(Ts) AS FirstTs,
-		    MAX(Ts) AS LastTs
-		FROM 
-		    LogRecords
-		WHERE
-			Id > ?
-		  	AND LogLineType == "LogLineTypeProxyRequest"
-		GROUP BY 
-		    DestIp
-		HAVING
-		    Reqs >= 5
-		ORDER BY
-		    Reqs DESC
-		`,
-		fromId,
-	)
-	if err != nil {
-		return nil, errors.Join(errors.New("error when GetDestHostsReportData"), err)
-	}
-
-	for i := 0; i < len(items); i++ {
-		items[i].DestIp = StrDef(items[i].DestIp, "<empty>")
 		setTimes(&items[i].BasicGroupReportData)
 	}
 	return items, nil
