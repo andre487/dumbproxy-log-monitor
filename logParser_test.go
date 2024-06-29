@@ -11,10 +11,10 @@ import (
 )
 
 func TestParseSystemDLogLine(t *testing.T) {
-	logLine1 := readFileToString("testData/log-line-request-http-info.txt")
-	logLine2 := readFileToString("testData/log-line-request.txt")
-	logLine3 := readFileToString("testData/log-line-httpsrv-error.txt")
-	logLine4 := readFileToString("testData/log-line-cant-dial.txt")
+	logLine1 := readFileToString("test/data/log-line-request-http-info.txt")
+	logLine2 := readFileToString("test/data/log-line-request.txt")
+	logLine3 := readFileToString("test/data/log-line-httpsrv-error.txt")
+	logLine4 := readFileToString("test/data/log-line-cant-dial.txt")
 
 	var rec *SystemDLogLineRecord
 	var err error
@@ -86,10 +86,10 @@ func TestParseSystemDLogLine(t *testing.T) {
 }
 
 func TestParseDumbProxyLogLine(t *testing.T) {
-	logLine1 := readFileToString("testData/log-line-request-http-info.txt")
-	logLine2 := readFileToString("testData/log-line-request.txt")
-	logLine3 := readFileToString("testData/log-line-httpsrv-error.txt")
-	logLine4 := readFileToString("testData/log-line-cant-dial.txt")
+	logLine1 := readFileToString("test/data/log-line-request-http-info.txt")
+	logLine2 := readFileToString("test/data/log-line-request.txt")
+	logLine3 := readFileToString("test/data/log-line-httpsrv-error.txt")
+	logLine4 := readFileToString("test/data/log-line-cant-dial.txt")
 
 	var rec *DumbProxyLogLineRecord
 	var err error
@@ -169,10 +169,10 @@ func TestParseDumbProxyLogLine(t *testing.T) {
 }
 
 func TestParseLogLine2(t *testing.T) {
-	logLineReq := readFileToString("testData/log-line-request.txt")
-	logLineHttpInfo := readFileToString("testData/log-line-request-http-info.txt")
-	logLineReqError := readFileToString("testData/log-line-request-error.txt")
-	logLineHttpSrvError := readFileToString("testData/log-line-httpsrv-error.txt")
+	logLineReq := readFileToString("test/data/log-line-request.txt")
+	logLineHttpInfo := readFileToString("test/data/log-line-request-http-info.txt")
+	logLineReqError := readFileToString("test/data/log-line-request-error.txt")
+	logLineHttpSrvError := readFileToString("test/data/log-line-httpsrv-error.txt")
 
 	var res *LogLineData
 	var err error
@@ -248,7 +248,7 @@ func TestParseLogLine2(t *testing.T) {
 }
 
 func TestBigLog2(t *testing.T) {
-	logText := readFileToString("testData/dumbproxy-big.log")
+	logText := readFileToString("test/data/dumbproxy-big.log")
 	for _, logLine := range strings.Split(logText, "\n") {
 		res, err := ParseLogLine(logLine)
 		if err != nil || res == nil {

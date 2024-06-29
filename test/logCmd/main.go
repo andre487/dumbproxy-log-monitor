@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	filePath := "../testData/dumbproxy-big.log"
+	filePath := "../data/dumbproxy-big.log"
 	logLineGeneral, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatalf("Read file %s error: %v", filePath, err)

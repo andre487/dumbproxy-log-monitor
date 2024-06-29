@@ -21,9 +21,7 @@
 go.work
 go.work.sum
 
-# Differet things
+# Dev stuff
 .idea
 *.iml
-data
-secrets
 dumbproxy-log-monitor

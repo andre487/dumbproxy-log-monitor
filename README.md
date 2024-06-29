@@ -41,7 +41,7 @@ Usage of ./dumbproxy-log-monitor:
 
 ## Report example
 
-[Report example](testData/report-example.html)
+[Report example](test/data/report-example.html)
 
 ## Build
 

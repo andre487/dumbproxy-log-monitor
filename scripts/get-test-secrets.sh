@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -eufo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 mkdir -p secrets
 
 get_secret() {
