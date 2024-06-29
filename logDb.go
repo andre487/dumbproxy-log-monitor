@@ -112,9 +112,12 @@ func (t *LogDb) Init() error {
 
 func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	log.Tracef("Executing GetSrcIpReportData(%d)", fromId)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var items []SrcIpReportData
-	err := t.logDb.Select(
+	err := t.logDb.SelectContext(
+		ctx,
 		&items,
 		`
 		SELECT 
@@ -150,9 +153,12 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 
 func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	log.Tracef("Executing GetUsersReportData(%d)", fromId)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var items []UsersReportData
-	err := t.logDb.Select(
+	err := t.logDb.SelectContext(
+		ctx,
 		&items,
 		`
 		SELECT 
@@ -186,9 +192,12 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 
 func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error) {
 	log.Tracef("Executing GetDestHostsReportData(%d)", fromId)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var items []DestHostsReportData
-	err := t.logDb.Select(
+	err := t.logDb.SelectContext(
+		ctx,
 		&items,
 		`
 		SELECT 
@@ -257,9 +266,11 @@ func (t *LogDb) GetLastId() (int, error) {
 
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 	log.Tracef("Executing GetKvIntRecord(%s)", key)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var val int
-	err := t.kvDb.Get(&val, `SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name=? LIMIT 1`, key)
+	err := t.kvDb.GetContext(ctx, &val, `SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name == ? LIMIT 1`, key)
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	} else if err != nil {
@@ -271,9 +282,11 @@ func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 
 func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 	log.Tracef("Executing GetKvStrRecord(%s)", key)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var val string
-	err := t.kvDb.Get(&val, `SELECT Value FROM KvData WHERE Name=? LIMIT 1`, key)
+	err := t.kvDb.GetContext(ctx, &val, `SELECT Value FROM KvData WHERE Name == ? LIMIT 1`, key)
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	} else if err != nil {
@@ -285,7 +298,10 @@ func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 
 func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 	log.Tracef("Executing SetKvRecord(%s, %v)", key, val)
-	if _, err := t.kvDb.Exec(`REPLACE INTO KvData (Name, Value) VALUES (?, CAST(? AS TEXT))`, key, val); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
+	if _, err := t.kvDb.ExecContext(ctx, `REPLACE INTO KvData (Name, Value) VALUES (?, CAST(? AS TEXT))`, key, val); err != nil {
 		return errors.Join(errors.New("unable to execute SetKvRecord query"), err)
 	}
 	return nil
@@ -293,8 +309,11 @@ func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 
 func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 	log.Tracef("Executing LogRecordsVacuumClean(%d)", maxAge)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
 	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
-	res, err := t.logDb.Exec(`DELETE FROM LogRecords WHERE Ts < ?`, borderTs)
+	res, err := t.logDb.ExecContext(ctx, `DELETE FROM LogRecords WHERE Ts < ?`, borderTs)
 	if err != nil {
 		return 0, errors.Join(errors.New("unable to execute LogRecordsVacuumClean query"), err)
 	}
@@ -303,8 +322,11 @@ func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 
 func (t *LogDb) CacheDataVacuumClean(maxAge time.Duration) (int64, error) {
 	log.Tracef("Executing CachedDataVacuumClean(%d)", maxAge)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
 	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
-	res, err := t.cacheDb.Exec(`DELETE FROM CacheData WHERE Ts < ?`, borderTs)
+	res, err := t.cacheDb.ExecContext(ctx, `DELETE FROM CacheData WHERE Ts < ?`, borderTs)
 	if err != nil {
 		return 0, errors.Join(errors.New("unable to execute CacheDataVacuumClean query"), err)
 	}
@@ -315,7 +337,7 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	log.Trace("Executing WriteRecordsFromChannel(logCh, wg)")
 	defer log.Infoln("WriteRecordsFromChannel is finished")
 
-	insertQuery, err := t.logDb.Prepare(`
+	insertQuery, err := t.logDb.PrepareNamed(`
 		INSERT INTO
 			LogRecords (
 				Ts, 
@@ -339,7 +361,27 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 				ErrorMessage
 			)
 		VALUES 
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(
+			 	:Ts, 
+				:LogLineType, 
+				:LogLine, 
+				:LogTime, 
+				:IsError, 
+				:HasRequestInfo, 
+				:Host, 
+				:Pid, 
+				:FileName, 
+				:FileLine, 
+				:SrcIp, 
+				:DestIp, 
+				:DestPort, 
+				:Username, 
+				:Proto, 
+				:Method, 
+				:Url, 
+				:Status, 
+				:ErrorMessage
+			)
 	`)
 	if err != nil {
 		log.Panicf("unable to prepare insert query in WriteRecordsFromChannel: %s", err)
@@ -347,36 +389,15 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	defer CloseOrWarn(insertQuery)
 
 	for item := range logCh {
-		_, err := insertQuery.Exec(
-			time.Now().Unix(),
-			item.LogLineType.String(),
-			item.LogLine,
-			item.LogTime.Unix(),
-			item.IsError,
-			item.HasRequestInfo,
-			item.Host,
-			item.Pid,
-			item.FileName,
-			item.FileLine,
-			item.SrcIp,
-			item.DestIp,
-			item.DestPort,
-			item.Username,
-			item.Proto,
-			item.Method,
-			item.Url,
-			item.Status,
-			item.ErrorMessage,
-		)
-		if err != nil {
+		if err := insertLogRecord(insertQuery, item); err != nil {
 			log.Errorf("Can not insert data: %s", err)
 		}
 	}
 }
 
 func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (string, error) {
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var tx *sqlx.Tx
 	var err error
@@ -387,7 +408,7 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 	}
 
 	var value string
-	err = tx.Get(&value, "SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
+	err = tx.GetContext(ctx, &value, "SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
 
 	haveData := true
 	if err != nil {
@@ -408,7 +429,7 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 	}
 
 	if haveData {
-		if _, err = tx.Exec("UPDATE CacheData SET Ts = ? WHERE Key == ?", now, cacheKey); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE CacheData SET Ts = ? WHERE Key == ?", now, cacheKey); err != nil {
 			WarnIfErr(tx.Rollback())
 			return "", errors.Join(errors.New("unable to start CacheData update"), err)
 		}
@@ -424,7 +445,7 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 		return "", errors.Join(errors.New("unable to get new value"), err)
 	}
 
-	if _, err = tx.Exec("INSERT INTO CacheData (Key, Value, Ts) VALUES (?, ?, ?)", cacheKey, value, now); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO CacheData (Key, Value, Ts) VALUES (?, ?, ?)", cacheKey, value, now); err != nil {
 		WarnIfErr(tx.Rollback())
 		return "", errors.Join(errors.New("unable to set new value to DB"), err)
 	}
@@ -436,7 +457,8 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 }
 
 func (t *LogDb) initSchema() error {
-	if err := t.execInitQueries(
+	var err error
+	err = t.execInitQueries(
 		t.logDb,
 		[]string{
 			`CREATE TABLE IF NOT EXISTS LogRecords (
@@ -464,11 +486,12 @@ func (t *LogDb) initSchema() error {
 			`CREATE INDEX IF NOT EXISTS Id_LogLineType ON LogRecords (Id, LogLineType)`,
 			`CREATE INDEX IF NOT EXISTS Ts ON LogRecords (Ts)`,
 		},
-	); err != nil {
+	)
+	if err != nil {
 		return err
 	}
 
-	if err := t.execInitQueries(
+	err = t.execInitQueries(
 		t.kvDb,
 		[]string{
 			`CREATE TABLE IF NOT EXISTS KvData (
@@ -477,11 +500,12 @@ func (t *LogDb) initSchema() error {
 			)`,
 			`REPLACE INTO KvData (Name, Value) VALUES ("SchemaVersion", "2")`,
 		},
-	); err != nil {
+	)
+	if err != nil {
 		return err
 	}
 
-	if err := t.execInitQueries(
+	err = t.execInitQueries(
 		t.cacheDb,
 		[]string{
 			`CREATE TABLE IF NOT EXISTS CacheData (
@@ -491,7 +515,8 @@ func (t *LogDb) initSchema() error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS Ts ON CacheData (Ts)`,
 		},
-	); err != nil {
+	)
+	if err != nil {
 		return err
 	}
 
@@ -499,8 +524,11 @@ func (t *LogDb) initSchema() error {
 }
 
 func (t *LogDb) execInitQueries(db *sqlx.DB, initQueries []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
 	for _, query := range initQueries {
-		if _, err := db.Exec(query); err != nil {
+		if _, err := db.ExecContext(ctx, query); err != nil {
 			return errors.Join(fmt.Errorf("unable to init schema for DB \"%+v\", query %s", db, query), err)
 		}
 	}
@@ -525,4 +553,35 @@ func (t *LogDb) checkSchemaVersion() error {
 func setTimes(val *BasicGroupReportData) {
 	val.FirstTime = time.Unix(int64(val.FirstTs), 0).UTC().Format(time.RFC3339)
 	val.LastTime = time.Unix(int64(val.LastTs), 0).UTC().Format(time.RFC3339)
+}
+
+func insertLogRecord(insertQuery *sqlx.NamedStmt, item *LogLineData) error {
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
+	_, err := insertQuery.ExecContext(
+		ctx,
+		map[string]interface{}{
+			"Ts":             time.Now().Unix(),
+			"LogLineType":    item.LogLineType.String(),
+			"LogLine":        item.LogLine,
+			"LogTime":        item.LogTime.Unix(),
+			"IsError":        item.IsError,
+			"HasRequestInfo": item.HasRequestInfo,
+			"Host":           item.Host,
+			"Pid":            item.Pid,
+			"FileName":       item.FileName,
+			"FileLine":       item.FileLine,
+			"SrcIp":          item.SrcIp,
+			"DestIp":         item.DestIp,
+			"DestPort":       item.DestPort,
+			"Username":       item.Username,
+			"Proto":          item.Proto,
+			"Method":         item.Method,
+			"Url":            item.Url,
+			"Status":         item.Status,
+			"ErrorMessage":   item.ErrorMessage,
+		},
+	)
+	return err
 }
