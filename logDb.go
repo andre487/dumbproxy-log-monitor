@@ -9,14 +9,15 @@ import (
 	"path"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
 )
 
 type LogDb struct {
-	logDb   *sql.DB
-	kvDb    *sql.DB
-	cacheDb *sql.DB
+	logDb   *sqlx.DB
+	kvDb    *sqlx.DB
+	cacheDb *sqlx.DB
 }
 
 type BasicGroupReportData struct {
@@ -63,17 +64,17 @@ func NewLogDb(dbDir string) (*LogDb, error) {
 	logDbPath := path.Join(dbDir, "log.db")
 	kvDbPath := path.Join(dbDir, "kv.db")
 
-	logDb, err := sql.Open("sqlite3", logDbPath)
+	logDb, err := sqlx.Open("sqlite3", logDbPath)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for logDb: %s", logDbPath), err)
 	}
 
-	kvDb, err := sql.Open("sqlite3", kvDbPath)
+	kvDb, err := sqlx.Open("sqlite3", kvDbPath)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for kvDb: %s", kvDbPath), err)
 	}
 
-	cacheDb, err := sql.Open("sqlite3", "file:cacheDb?mode=memory")
+	cacheDb, err := sqlx.Open("sqlite3", ":memory:")
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for cacheDb: %s", kvDbPath), err)
 	}
@@ -505,68 +506,74 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 }
 
 func (t *LogDb) initSchema() error {
-	logTablesSql := []string{
-		`CREATE TABLE IF NOT EXISTS LogRecords (
-			Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			Ts INTEGER NOT NULL,
-			LogLineType TEXT NOT NULL,
-			LogLine TEXT NOT NULL,
-			LogTime INTEGER NOT NULL,
-			IsError INTEGER NOT NULL,
-			HasRequestInfo INTEGER NOT NULL,
-			Host TEXT NOT NULL,
-			Pid INTEGER NOT NULL,
-			FileName TEXT NOT NULL,
-			FileLine TEXT NOT NULL,
-			SrcIp TEXT NOT NULL,
-			DestIp TEXT NOT NULL,
-			DestPort INTEGER NOT NULL,
-			Username TEXT NOT NULL,
-			Proto TEXT NOT NULL,
-			Method TEXT NOT NULL,
-			Url TEXT NOT NULL,
-			Status INTEGER NOT NULL,
-			ErrorMessage TEXT NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS Id_LogLineType ON LogRecords (Id, LogLineType)`,
-		`CREATE INDEX IF NOT EXISTS Ts ON LogRecords (Ts)`,
+	if err := t.execInitQueries(
+		t.logDb,
+		[]string{
+			`CREATE TABLE IF NOT EXISTS LogRecords (
+				Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				Ts INTEGER NOT NULL,
+				LogLineType TEXT NOT NULL,
+				LogLine TEXT NOT NULL,
+				LogTime INTEGER NOT NULL,
+				IsError INTEGER NOT NULL,
+				HasRequestInfo INTEGER NOT NULL,
+				Host TEXT NOT NULL,
+				Pid INTEGER NOT NULL,
+				FileName TEXT NOT NULL,
+				FileLine TEXT NOT NULL,
+				SrcIp TEXT NOT NULL,
+				DestIp TEXT NOT NULL,
+				DestPort INTEGER NOT NULL,
+				Username TEXT NOT NULL,
+				Proto TEXT NOT NULL,
+				Method TEXT NOT NULL,
+				Url TEXT NOT NULL,
+				Status INTEGER NOT NULL,
+				ErrorMessage TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS Id_LogLineType ON LogRecords (Id, LogLineType)`,
+			`CREATE INDEX IF NOT EXISTS Ts ON LogRecords (Ts)`,
+		},
+	); err != nil {
+		return err
 	}
 
-	for _, tableQuery := range logTablesSql {
-		if _, err := t.logDb.Exec(tableQuery); err != nil {
-			return errors.Join(fmt.Errorf("unable to init schema for logDb, query %s", tableQuery), err)
+	if err := t.execInitQueries(
+		t.logDb,
+		[]string{
+			`CREATE TABLE IF NOT EXISTS KvData (
+				Name TEXT NOT NULL PRIMARY KEY,
+				Value TEXT NOT NULL
+			)`,
+			`REPLACE INTO KvData (Name, Value) VALUES ("SchemaVersion", "2")`,
+		},
+	); err != nil {
+		return err
+	}
+
+	if err := t.execInitQueries(
+		t.logDb,
+		[]string{
+			`CREATE TABLE IF NOT EXISTS CacheData (
+				Key TEXT NOT NULL PRIMARY KEY,
+				Value TEXT NOT NULL,
+				Ts INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS Ts ON CacheData (Ts)`,
+		},
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *LogDb) execInitQueries(db *sqlx.DB, initQueries []string) error {
+	for _, query := range initQueries {
+		if _, err := db.Exec(query); err != nil {
+			return errors.Join(fmt.Errorf("unable to init schema for DB \"%+v\", query %s", db, query), err)
 		}
 	}
-
-	kvTablesSql := []string{
-		`CREATE TABLE IF NOT EXISTS KvData (
-			Name TEXT NOT NULL PRIMARY KEY,
-			Value TEXT NOT NULL
-		)`,
-		`REPLACE INTO KvData (Name, Value) VALUES ("SchemaVersion", "2")`,
-	}
-
-	for _, tableQuery := range kvTablesSql {
-		if _, err := t.kvDb.Exec(tableQuery); err != nil {
-			return errors.Join(fmt.Errorf("unable to init schema for kvDb, query %s", tableQuery), err)
-		}
-	}
-
-	cacheTablesSql := []string{
-		`CREATE TABLE IF NOT EXISTS CacheData (
-			Key TEXT NOT NULL PRIMARY KEY,
-			Value TEXT NOT NULL,
-			Ts INTEGER NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS Ts ON CacheData (Ts)`,
-	}
-
-	for _, tableQuery := range cacheTablesSql {
-		if _, err := t.cacheDb.Exec(tableQuery); err != nil {
-			return errors.Join(fmt.Errorf("unable to init schema for cacheDb, query %s", tableQuery), err)
-		}
-	}
-
 	return nil
 }
 
