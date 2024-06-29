@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type LogReporter struct {
@@ -38,30 +36,20 @@ func (t *LogReporter) GenerateReport() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	for i := 0; i < len(srcIpData); i++ {
+		srcIpData[i].SrcHost, err = t.resolver.ResolveDomain(srcIpData[i].SrcIp)
+		WarnIfErr(err)
+	}
 
 	userData, err := t.db.GetUsersReportData(lastId)
 	if err != nil {
 		return "", err
 	}
 
-	destHostsData, err := t.db.GetDestHostsReportData(lastId)
-	if err != nil {
-		return "", err
-	}
-	var newDestHostsData []DestHostsReportData
-	for _, val := range destHostsData {
-		val.DestHost, err = t.resolver.ResolveDomain(val.DestIp)
-		if err != nil {
-			log.Warnf("Unable to resolve DestIp: %s", err)
-		}
-		newDestHostsData = append(newDestHostsData, val)
-	}
-
 	tplWriter := bytes.NewBufferString("")
 	err = t.tmpl.ExecuteTemplate(tplWriter, "report.html.tmpl", map[string]any{
-		"SrcIpData":     srcIpData,
-		"UserData":      userData,
-		"DestHostsData": newDestHostsData,
+		"SrcIpData": srcIpData,
+		"UserData":  userData,
 	})
 	if err != nil {
 		return "", err
@@ -72,9 +60,6 @@ func (t *LogReporter) GenerateReport() (string, error) {
 		newLastId = max(newLastId, data.LastId)
 	}
 	for _, data := range userData {
-		newLastId = max(newLastId, data.LastId)
-	}
-	for _, data := range destHostsData {
 		newLastId = max(newLastId, data.LastId)
 	}
 

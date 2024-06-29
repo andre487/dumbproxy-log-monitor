@@ -9,39 +9,42 @@ import (
 	"path"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
 )
 
 type LogDb struct {
-	logDb   *sql.DB
-	kvDb    *sql.DB
-	cacheDb *sql.DB
+	logDb   *sqlx.DB
+	kvDb    *sqlx.DB
+	cacheDb *sqlx.DB
 }
 
 type BasicGroupReportData struct {
-	Reqs      int
-	LastId    int
-	FirstTs   int
-	LastTs    int
-	FirstTime string
-	LastTime  string
+	Reqs      int    `db:"Reqs"`
+	LastId    int    `db:"LastId"`
+	FirstTs   int    `db:"FirstTs"`
+	LastTs    int    `db:"LastTs"`
+	FirstTime string `db:"FirstTime"`
+	LastTime  string `db:"LastTime"`
 }
 
 type SrcIpReportData struct {
 	BasicGroupReportData
-	SrcIp string
+	SrcIp   string `db:"SrcIp"`
+	SrcHost string
 }
 
 type UsersReportData struct {
 	BasicGroupReportData
-	Username string
+	Username string `db:"Username"`
 }
 
-type DestHostsReportData struct {
-	BasicGroupReportData
-	DestIp   string
-	DestHost string
+type LogLineDataInsertData struct {
+	*LogLineData
+	Ts          int64  `db:"Ts"`
+	LogTime     int64  `db:"LogTime"`
+	LogLineType string `db:"LogLineType"`
 }
 
 const QueryTimeout = 10 * time.Second
@@ -63,17 +66,17 @@ func NewLogDb(dbDir string) (*LogDb, error) {
 	logDbPath := path.Join(dbDir, "log.db")
 	kvDbPath := path.Join(dbDir, "kv.db")
 
-	logDb, err := sql.Open("sqlite3", logDbPath)
+	logDb, err := sqlx.Open("sqlite3", logDbPath)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for logDb: %s", logDbPath), err)
 	}
 
-	kvDb, err := sql.Open("sqlite3", kvDbPath)
+	kvDb, err := sqlx.Open("sqlite3", kvDbPath)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for kvDb: %s", kvDbPath), err)
 	}
 
-	cacheDb, err := sql.Open("sqlite3", "file:cacheDb?mode=memory")
+	cacheDb, err := sqlx.Open("sqlite3", "file:cacheDb?mode=memory")
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to execute sql.Open for cacheDb: %s", kvDbPath), err)
 	}
@@ -111,12 +114,13 @@ func (t *LogDb) Init() error {
 
 func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 	log.Tracef("Executing GetSrcIpReportData(%d)", fromId)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
-
-	res, err := t.logDb.QueryContext(
+	var items []SrcIpReportData
+	err := t.logDb.SelectContext(
 		ctx,
+		&items,
 		`
 		SELECT 
 		    SrcIp,
@@ -139,40 +143,25 @@ func (t *LogDb) GetSrcIpReportData(fromId int) ([]SrcIpReportData, error) {
 		fromId,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error when executing GetSrcIpReportData query: %s", err)
-	}
-	defer func() {
-		log.Trace("Closing query for GetSrcIpReportData")
-		if err := res.Close(); err != nil {
-			log.Warnf("Unable to close query for GetSrcIpReportData: %s", err)
-		}
-	}()
-
-	var items []SrcIpReportData
-	for res.Next() {
-		var curData SrcIpReportData
-		if err := res.Scan(&curData.SrcIp, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
-			return nil, fmt.Errorf("error when fetching element in GetUsersReportData: %s", err)
-		}
-		if curData.SrcIp == "" {
-			curData.SrcIp = "<empty>"
-		}
-		curData.FirstTime = time.Unix(int64(curData.FirstTs), 0).UTC().Format(time.RFC3339)
-		curData.LastTime = time.Unix(int64(curData.LastTs), 0).UTC().Format(time.RFC3339)
-		items = append(items, curData)
+		return nil, errors.Join(errors.New("error when GetSrcIpReportData"), err)
 	}
 
+	for i := 0; i < len(items); i++ {
+		items[i].SrcIp = StrDef(items[i].SrcIp, "<empty>")
+		setTimes(&items[i].BasicGroupReportData)
+	}
 	return items, nil
 }
 
 func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 	log.Tracef("Executing GetUsersReportData(%d)", fromId)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
-
-	res, err := t.logDb.QueryContext(
+	var items []UsersReportData
+	err := t.logDb.SelectContext(
 		ctx,
+		&items,
 		`
 		SELECT 
 		    Username,
@@ -193,85 +182,13 @@ func (t *LogDb) GetUsersReportData(fromId int) ([]UsersReportData, error) {
 		fromId,
 	)
 	if err != nil {
-		return nil, errors.Join(errors.New("error when executing GetUsersReportData query"), err)
-	}
-	defer func() {
-		log.Trace("Closing query for GetUsersReportData")
-		if err := res.Close(); err != nil {
-			log.Warnf("Unable to close query for GetUsersReportData: %s", err)
-		}
-	}()
-
-	var items []UsersReportData
-	for res.Next() {
-		var curData UsersReportData
-		if err := res.Scan(&curData.Username, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
-			return nil, errors.Join(errors.New("error when fetching element in GetUsersReportData"), err)
-		}
-		if curData.Username == "" {
-			curData.Username = "<empty>"
-		}
-		curData.FirstTime = time.Unix(int64(curData.FirstTs), 0).UTC().Format(time.RFC3339)
-		curData.LastTime = time.Unix(int64(curData.LastTs), 0).UTC().Format(time.RFC3339)
-		items = append(items, curData)
+		return nil, errors.Join(errors.New("error when GetUsersReportData"), err)
 	}
 
-	return items, nil
-}
-
-func (t *LogDb) GetDestHostsReportData(fromId int) ([]DestHostsReportData, error) {
-	log.Tracef("Executing GetDestHostsReportData(%d)", fromId)
-
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
-
-	res, err := t.logDb.QueryContext(
-		ctx,
-		`
-		SELECT 
-		    DestIp,
-		    COUNT(*) AS Reqs,
-		    MAX(Id) AS LastId,
-		    MIN(Ts) AS FirstTs,
-		    MAX(Ts) AS LastTs
-		FROM 
-		    LogRecords
-		WHERE
-			Id > ?
-		  	AND LogLineType == "LogLineTypeProxyRequest"
-		GROUP BY 
-		    DestIp
-		HAVING
-		    Reqs >= 5
-		ORDER BY
-		    Reqs DESC
-		`,
-		fromId,
-	)
-	if err != nil {
-		return nil, errors.Join(errors.New("error when executing GetDestHostsReportData query"), err)
+	for i := 0; i < len(items); i++ {
+		items[i].Username = StrDef(items[i].Username, "<empty>")
+		setTimes(&items[i].BasicGroupReportData)
 	}
-	defer func() {
-		log.Trace("Closing query for GetDestHostsReportData")
-		if err := res.Close(); err != nil {
-			log.Warnf("Unable to close query for GetDestHostsReportData: %s", err)
-		}
-	}()
-
-	var items []DestHostsReportData
-	for res.Next() {
-		var curData DestHostsReportData
-		if err := res.Scan(&curData.DestIp, &curData.Reqs, &curData.LastId, &curData.FirstTs, &curData.LastTs); err != nil {
-			return nil, errors.Join(errors.New("error when fetching element in GetDestHostsReportData"), err)
-		}
-		if curData.DestIp == "" {
-			curData.DestIp = "<empty>"
-		}
-		curData.FirstTime = time.Unix(int64(curData.FirstTs), 0).UTC().Format(time.RFC3339)
-		curData.LastTime = time.Unix(int64(curData.LastTs), 0).UTC().Format(time.RFC3339)
-		items = append(items, curData)
-	}
-
 	return items, nil
 }
 
@@ -310,19 +227,15 @@ func (t *LogDb) GetLastId() (int, error) {
 
 func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 	log.Tracef("Executing GetKvIntRecord(%s)", key)
-
-	res := t.kvDb.QueryRow(`SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name=? LIMIT 1`, key)
-	err := res.Err()
-	if err != nil {
-		return 0, errors.Join(errors.New("unable to execute GetKvIntRecord query"), err)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var val int
-	err = res.Scan(&val)
+	err := t.kvDb.GetContext(ctx, &val, `SELECT CAST(Value AS INTEGER) FROM KvData WHERE Name == ? LIMIT 1`, key)
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	} else if err != nil {
-		return 0, errors.Join(errors.New("unable to fetch element in GetKvIntRecord"), err)
+		return 0, errors.Join(errors.New("unable to GetKvIntRecord"), err)
 	}
 
 	return val, nil
@@ -330,19 +243,15 @@ func (t *LogDb) GetKvIntRecord(key string) (int, error) {
 
 func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 	log.Tracef("Executing GetKvStrRecord(%s)", key)
-
-	res := t.kvDb.QueryRow(`SELECT Value FROM KvData WHERE Name=? LIMIT 1`, key)
-	err := res.Err()
-	if err != nil {
-		return "", errors.Join(errors.New("unable to execute GetKvStrRecord query"), err)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
 	var val string
-	err = res.Scan(&val)
+	err := t.kvDb.GetContext(ctx, &val, `SELECT Value FROM KvData WHERE Name == ? LIMIT 1`, key)
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	} else if err != nil {
-		return "", errors.Join(errors.New("unable to fetch element in GetKvStrRecord"), err)
+		return "", errors.Join(errors.New("unable to GetKvIntRecord"), err)
 	}
 
 	return val, nil
@@ -350,7 +259,10 @@ func (t *LogDb) GetKvStrRecord(key string) (string, error) {
 
 func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 	log.Tracef("Executing SetKvRecord(%s, %v)", key, val)
-	if _, err := t.kvDb.Exec(`REPLACE INTO KvData (Name, Value) VALUES (?, CAST(? AS TEXT))`, key, val); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
+	if _, err := t.kvDb.ExecContext(ctx, `REPLACE INTO KvData (Name, Value) VALUES (?, CAST(? AS TEXT))`, key, val); err != nil {
 		return errors.Join(errors.New("unable to execute SetKvRecord query"), err)
 	}
 	return nil
@@ -358,18 +270,46 @@ func (t *LogDb) SetKvRecord(key string, val interface{}) error {
 
 func (t *LogDb) LogRecordsVacuumClean(maxAge time.Duration) (int64, error) {
 	log.Tracef("Executing LogRecordsVacuumClean(%d)", maxAge)
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
 	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
-	res, err := t.logDb.Exec(`DELETE FROM LogRecords WHERE Ts < ?`, borderTs)
+	res, err := t.logDb.ExecContext(ctx, `DELETE FROM LogRecords WHERE Ts < ?`, borderTs)
 	if err != nil {
 		return 0, errors.Join(errors.New("unable to execute LogRecordsVacuumClean query"), err)
 	}
 	return res.RowsAffected()
 }
 
-func (t *LogDb) CacheDataVacuumClean(maxAge time.Duration) (int64, error) {
-	log.Tracef("Executing CachedDataVacuumClean(%d)", maxAge)
-	borderTs := time.Now().Unix() - int64(maxAge/time.Second)
-	res, err := t.cacheDb.Exec(`DELETE FROM CacheData WHERE Ts < ?`, borderTs)
+func (t *LogDb) CacheDataVacuumClean(maxItems int) (int64, error) {
+	log.Tracef("Executing CachedDataVacuumClean()")
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
+	now := time.Now().Unix()
+	res, err := t.cacheDb.ExecContext(
+		ctx,
+		`
+		DELETE FROM 
+		   CacheData 
+	   	WHERE 
+	   	    ExpiresTs >= ? 
+			OR Key IN (
+				SELECT 
+					Key 
+				FROM 
+					CacheData
+				ORDER BY
+	   				ExpiresTs
+	   			LIMIT
+	   				-1
+	   			OFFSET
+	   				?
+			) 
+		`,
+		now,
+		maxItems,
+	)
 	if err != nil {
 		return 0, errors.Join(errors.New("unable to execute CacheDataVacuumClean query"), err)
 	}
@@ -380,7 +320,7 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	log.Trace("Executing WriteRecordsFromChannel(logCh, wg)")
 	defer log.Infoln("WriteRecordsFromChannel is finished")
 
-	insertQuery, err := t.logDb.Prepare(`
+	insertQuery, err := t.logDb.PrepareNamed(`
 		INSERT INTO
 			LogRecords (
 				Ts, 
@@ -404,7 +344,27 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 				ErrorMessage
 			)
 		VALUES 
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(
+			 	:Ts, 
+				:LogLineType, 
+				:LogLine, 
+				:LogTime, 
+				:IsError, 
+				:HasRequestInfo, 
+				:Host, 
+				:Pid, 
+				:FileName, 
+				:FileLine, 
+				:SrcIp, 
+				:DestIp, 
+				:DestPort, 
+				:Username, 
+				:Proto, 
+				:Method, 
+				:Url, 
+				:Status, 
+				:ErrorMessage
+			)
 	`)
 	if err != nil {
 		log.Panicf("unable to prepare insert query in WriteRecordsFromChannel: %s", err)
@@ -412,62 +372,42 @@ func (t *LogDb) WriteRecordsFromChannel(logCh chan *LogLineData) {
 	defer CloseOrWarn(insertQuery)
 
 	for item := range logCh {
-		_, err := insertQuery.Exec(
-			time.Now().Unix(),
-			item.LogLineType.String(),
-			item.LogLine,
-			item.LogTime.Unix(),
-			item.IsError,
-			item.HasRequestInfo,
-			item.Host,
-			item.Pid,
-			item.FileName,
-			item.FileLine,
-			item.SrcIp,
-			item.DestIp,
-			item.DestPort,
-			item.Username,
-			item.Proto,
-			item.Method,
-			item.Url,
-			item.Status,
-			item.ErrorMessage,
-		)
-		if err != nil {
+		if err := insertLogRecord(insertQuery, item); err != nil {
 			log.Errorf("Can not insert data: %s", err)
 		}
 	}
 }
 
-func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (string, error) {
-	ctx, cancelFunc := context.WithTimeout(context.Background(), QueryTimeout)
-	defer cancelFunc()
+func (t *LogDb) GetCached(cacheKey string, ttl time.Duration, getter func() (string, error)) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
 
-	var tx *sql.Tx
+	var tx *sqlx.Tx
 	var err error
 	var _ interface{}
 
-	if tx, err = t.cacheDb.BeginTx(ctx, &sql.TxOptions{}); err != nil {
+	if tx, err = t.cacheDb.BeginTxx(ctx, &sql.TxOptions{}); err != nil {
 		return "", errors.Join(errors.New("unable to start CacheData transaction"), err)
 	}
 
-	res := tx.QueryRow("SELECT Value FROM CacheData WHERE Key == ? LIMIT 1", cacheKey)
-	if err = res.Err(); err != nil {
-		WarnIfErr(tx.Rollback())
-		return "", errors.Join(errors.New("unable to start CacheData query"), err)
-	}
+	now := time.Now().Unix()
+	newExpiresTs := now + int64(ttl/time.Second)
 
-	var value string
+	curRes := struct {
+		Value     string `db:"Value"`
+		ExpiresTs int64  `db:"ExpiresTs"`
+	}{}
+	err = tx.GetContext(ctx, &curRes, "SELECT Value, ExpiresTs FROM CacheData WHERE Key == ? AND ExpiresTs < ? LIMIT 1", cacheKey, now)
+
+	value := curRes.Value
 	haveData := true
-	if err = res.Scan(&value); err != nil {
+	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			WarnIfErr(tx.Rollback())
 			return "", errors.Join(errors.New("unable to get CacheData item"), err)
 		}
 		haveData = false
 	}
-
-	now := time.Now().Unix()
 
 	commitTx := func() error {
 		if err = tx.Commit(); err != nil {
@@ -477,9 +417,9 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 	}
 
 	if haveData {
-		if _, err = tx.Exec("UPDATE CacheData SET Ts = ? WHERE Key == ? LIMIT 1", now, cacheKey); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE CacheData SET ExpiresTs = ? WHERE Key == ?", newExpiresTs, cacheKey); err != nil {
 			WarnIfErr(tx.Rollback())
-			return "", err
+			return "", errors.Join(errors.New("unable to start CacheData update"), err)
 		}
 		if err = commitTx(); err != nil {
 			WarnIfErr(tx.Rollback())
@@ -493,7 +433,7 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 		return "", errors.Join(errors.New("unable to get new value"), err)
 	}
 
-	if _, err = tx.Exec("INSERT INTO CacheData (Key, Value, Ts) VALUES (?, ?, ?)", cacheKey, value, now); err != nil {
+	if _, err = tx.ExecContext(ctx, "REPLACE INTO CacheData (Key, Value, ExpiresTs) VALUES (?, ?, ?)", cacheKey, value, newExpiresTs); err != nil {
 		WarnIfErr(tx.Rollback())
 		return "", errors.Join(errors.New("unable to set new value to DB"), err)
 	}
@@ -505,68 +445,82 @@ func (t *LogDb) GetCached(cacheKey string, getter func() (string, error)) (strin
 }
 
 func (t *LogDb) initSchema() error {
-	logTablesSql := []string{
-		`CREATE TABLE IF NOT EXISTS LogRecords (
-			Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			Ts INTEGER NOT NULL,
-			LogLineType TEXT NOT NULL,
-			LogLine TEXT NOT NULL,
-			LogTime INTEGER NOT NULL,
-			IsError INTEGER NOT NULL,
-			HasRequestInfo INTEGER NOT NULL,
-			Host TEXT NOT NULL,
-			Pid INTEGER NOT NULL,
-			FileName TEXT NOT NULL,
-			FileLine TEXT NOT NULL,
-			SrcIp TEXT NOT NULL,
-			DestIp TEXT NOT NULL,
-			DestPort INTEGER NOT NULL,
-			Username TEXT NOT NULL,
-			Proto TEXT NOT NULL,
-			Method TEXT NOT NULL,
-			Url TEXT NOT NULL,
-			Status INTEGER NOT NULL,
-			ErrorMessage TEXT NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS Id_LogLineType ON LogRecords (Id, LogLineType)`,
-		`CREATE INDEX IF NOT EXISTS Ts ON LogRecords (Ts)`,
+	var err error
+	err = t.execInitQueries(
+		t.logDb,
+		[]string{
+			`CREATE TABLE IF NOT EXISTS LogRecords (
+				Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				Ts INTEGER NOT NULL,
+				LogLineType TEXT NOT NULL,
+				LogLine TEXT NOT NULL,
+				LogTime INTEGER NOT NULL,
+				IsError INTEGER NOT NULL,
+				HasRequestInfo INTEGER NOT NULL,
+				Host TEXT NOT NULL,
+				Pid INTEGER NOT NULL,
+				FileName TEXT NOT NULL,
+				FileLine TEXT NOT NULL,
+				SrcIp TEXT NOT NULL,
+				DestIp TEXT NOT NULL,
+				DestPort INTEGER NOT NULL,
+				Username TEXT NOT NULL,
+				Proto TEXT NOT NULL,
+				Method TEXT NOT NULL,
+				Url TEXT NOT NULL,
+				Status INTEGER NOT NULL,
+				ErrorMessage TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS Id_LogLineType ON LogRecords (Id, LogLineType)`,
+			`CREATE INDEX IF NOT EXISTS Ts ON LogRecords (Ts)`,
+		},
+	)
+	if err != nil {
+		return err
 	}
 
-	for _, tableQuery := range logTablesSql {
-		if _, err := t.logDb.Exec(tableQuery); err != nil {
-			return errors.Join(fmt.Errorf("unable to init schema for logDb, query %s", tableQuery), err)
+	err = t.execInitQueries(
+		t.kvDb,
+		[]string{
+			`CREATE TABLE IF NOT EXISTS KvData (
+				Name TEXT NOT NULL PRIMARY KEY,
+				Value TEXT NOT NULL
+			)`,
+			`REPLACE INTO KvData (Name, Value) VALUES ("SchemaVersion", "2")`,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = t.execInitQueries(
+		t.cacheDb,
+		[]string{
+			`CREATE TABLE IF NOT EXISTS CacheData (
+				Key TEXT NOT NULL PRIMARY KEY,
+				Value TEXT NOT NULL,
+				ExpiresTs INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS ExpiresTs ON CacheData (ExpiresTs)`,
+			`CREATE INDEX IF NOT EXISTS Key_ExpiresTs ON CacheData (Key, ExpiresTs)`,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *LogDb) execInitQueries(db *sqlx.DB, initQueries []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
+	for _, query := range initQueries {
+		if _, err := db.ExecContext(ctx, query); err != nil {
+			return errors.Join(fmt.Errorf("unable to init schema for DB \"%+v\", query %s", db, query), err)
 		}
 	}
-
-	kvTablesSql := []string{
-		`CREATE TABLE IF NOT EXISTS KvData (
-			Name TEXT NOT NULL PRIMARY KEY,
-			Value TEXT NOT NULL
-		)`,
-		`REPLACE INTO KvData (Name, Value) VALUES ("SchemaVersion", "2")`,
-	}
-
-	for _, tableQuery := range kvTablesSql {
-		if _, err := t.kvDb.Exec(tableQuery); err != nil {
-			return errors.Join(fmt.Errorf("unable to init schema for kvDb, query %s", tableQuery), err)
-		}
-	}
-
-	cacheTablesSql := []string{
-		`CREATE TABLE IF NOT EXISTS CacheData (
-			Key TEXT NOT NULL PRIMARY KEY,
-			Value TEXT NOT NULL,
-			Ts INTEGER NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS Ts ON CacheData (Ts)`,
-	}
-
-	for _, tableQuery := range cacheTablesSql {
-		if _, err := t.cacheDb.Exec(tableQuery); err != nil {
-			return errors.Join(fmt.Errorf("unable to init schema for cacheDb, query %s", tableQuery), err)
-		}
-	}
-
 	return nil
 }
 
@@ -583,4 +537,22 @@ func (t *LogDb) checkSchemaVersion() error {
 	}
 
 	return nil
+}
+
+func setTimes(val *BasicGroupReportData) {
+	val.FirstTime = time.Unix(int64(val.FirstTs), 0).UTC().Format(time.RFC3339)
+	val.LastTime = time.Unix(int64(val.LastTs), 0).UTC().Format(time.RFC3339)
+}
+
+func insertLogRecord(insertQuery *sqlx.NamedStmt, item *LogLineData) error {
+	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+	defer cancel()
+
+	_, err := insertQuery.ExecContext(ctx, LogLineDataInsertData{
+		LogLineData: item,
+		Ts:          time.Now().Unix(),
+		LogTime:     item.LogTime.Unix(),
+		LogLineType: item.LogLineType.String(),
+	})
+	return err
 }

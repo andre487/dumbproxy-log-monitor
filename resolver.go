@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 )
 
 type DnsResolver struct {
@@ -20,7 +21,7 @@ func (t *DnsResolver) ResolveDomain(ipAddr string) (string, error) {
 		return "<empty>", nil
 	}
 
-	return t.db.GetCached("DnsResolver:ResolveDomain:"+ipAddr, func() (string, error) {
+	return t.db.GetCached("DnsResolver:ResolveDomain:"+ipAddr, 24*time.Hour, func() (string, error) {
 		finalName := fmt.Sprintf("<Unresolved: %s>", ipAddr)
 
 		vals, err := net.LookupAddr(ipAddr)

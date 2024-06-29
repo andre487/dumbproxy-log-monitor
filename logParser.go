@@ -100,23 +100,23 @@ var monthMap = map[string]time.Month{
 
 type LogLineData struct {
 	LogLineType    LogLineType
-	LogLine        string
+	LogLine        string `db:"LogLine"`
 	LogTime        time.Time
-	IsError        bool
-	HasRequestInfo bool
-	Host           string
-	Pid            int
-	FileName       string
-	FileLine       int
-	SrcIp          string
-	DestIp         string
-	DestPort       int
-	Username       string
-	Proto          string
-	Method         string
-	Url            string
-	Status         int
-	ErrorMessage   string
+	IsError        bool   `db:"IsError"`
+	HasRequestInfo bool   `db:"HasRequestInfo"`
+	Host           string `db:"Host"`
+	Pid            int    `db:"Pid"`
+	FileName       string `db:"FileName"`
+	FileLine       int    `db:"FileLine"`
+	SrcIp          string `db:"SrcIp"`
+	DestIp         string `db:"DestIp"`
+	DestPort       int    `db:"DestPort"`
+	Username       string `db:"Username"`
+	Proto          string `db:"Proto"`
+	Method         string `db:"Method"`
+	Url            string `db:"Url"`
+	Status         int    `db:"Status"`
+	ErrorMessage   string `db:"ErrorMessage"`
 }
 
 type requestLogRecord struct {

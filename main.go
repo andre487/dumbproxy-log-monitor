@@ -29,6 +29,8 @@ type cliArgs struct {
 	scheduleInterval time.Duration
 }
 
+const MaxCacheItems = 10000
+
 func main() {
 	args := getArgs()
 	handleArgs(&args)
@@ -98,9 +100,9 @@ func main() {
 
 	scheduler.Schedule(SchedulerJobDescription{
 		TaskName: "CacheDataVacuumClean",
-		Interval: 10 * time.Minute,
+		Interval: 1 * time.Hour,
 		Task: func() error {
-			recsDeleted, err := db.CacheDataVacuumClean(600 * time.Minute)
+			recsDeleted, err := db.CacheDataVacuumClean(MaxCacheItems)
 			log.Infof("Vacuum clean cache records deleted: %d", recsDeleted)
 			return err
 		},
