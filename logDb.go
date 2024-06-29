@@ -397,16 +397,16 @@ func (t *LogDb) GetCached(cacheKey string, ttl time.Duration, getter func() (str
 		Value     string `db:"Value"`
 		ExpiresTs int64  `db:"ExpiresTs"`
 	}{}
-	err = tx.GetContext(ctx, &curRes, "SELECT Value, ExpiresTs FROM CacheData WHERE Key == ? AND ExpiresTs < ? LIMIT 1", cacheKey, now)
+	err = tx.GetContext(ctx, &curRes, "SELECT Value, ExpiresTs FROM CacheData WHERE Key == ? AND ExpiresTs > ? LIMIT 1", cacheKey, now)
 
 	value := curRes.Value
-	haveData := true
+	hasData := true
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			WarnIfErr(tx.Rollback())
 			return "", errors.Join(errors.New("unable to get CacheData item"), err)
 		}
-		haveData = false
+		hasData = false
 	}
 
 	commitTx := func() error {
@@ -416,7 +416,7 @@ func (t *LogDb) GetCached(cacheKey string, ttl time.Duration, getter func() (str
 		return nil
 	}
 
-	if haveData {
+	if hasData {
 		if _, err = tx.ExecContext(ctx, "UPDATE CacheData SET ExpiresTs = ? WHERE Key == ?", newExpiresTs, cacheKey); err != nil {
 			WarnIfErr(tx.Rollback())
 			return "", errors.Join(errors.New("unable to start CacheData update"), err)
@@ -439,8 +439,10 @@ func (t *LogDb) GetCached(cacheKey string, ttl time.Duration, getter func() (str
 	}
 
 	if err = commitTx(); err != nil {
+		WarnIfErr(tx.Rollback())
 		return "", err
 	}
+
 	return value, nil
 }
 
