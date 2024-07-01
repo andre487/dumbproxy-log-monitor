@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path"
 	"regexp"
 	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
+	bgscheduler "github.com/andre487/go-background-task-scheduler"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -49,7 +51,13 @@ func main() {
 		ExecDir:            args.logCmdDir,
 		LastHandledTime:    Must1(db.GetLastHandledTime()),
 	}))
-	scheduler := Must1(NewScheduler(db, args.scheduleInterval))
+
+	scheduler := bgscheduler.MustCreateNewScheduler(&bgscheduler.Config{
+		Logger:       log.StandardLogger(),
+		LogLevel:     bgscheduler.LogLevel(log.StandardLogger().GetLevel()),
+		DbPath:       path.Join(args.dbDir, "scheduler.db"),
+		ScanInterval: args.scheduleInterval,
+	})
 	reporter := Must1(NewLogReporter(db))
 
 	createReport := func() error {
@@ -78,35 +86,35 @@ func main() {
 		return nil
 	}
 
-	Must0(
-		scheduler.ScheduleExactTime(SchedulerJobExactTimeDescription{
-			TaskName: "CreateReport",
-			Hour:     args.reportHour,
-			Minute:   args.reportMinute,
-			Second:   args.reportSecond,
-			Task:     createReport,
-		}),
+	scheduler.MustScheduleExactTimeTask(
+		"CreateReport",
+		bgscheduler.ExactLaunchTime{
+			Hour:   args.reportHour,
+			Minute: args.reportMinute,
+			Second: args.reportSecond,
+		},
+		createReport,
 	)
 
-	scheduler.Schedule(SchedulerJobDescription{
-		TaskName: "LogRecordsVacuumClean",
-		Interval: 1 * time.Hour,
-		Task: func() error {
+	scheduler.MustScheduleIntervalTask(
+		"LogRecordsVacuumClean",
+		time.Hour,
+		func() error {
 			recsDeleted, err := db.LogRecordsVacuumClean(48 * time.Hour)
 			log.Infof("Vacuum clean log records deleted: %d", recsDeleted)
 			return err
 		},
-	})
+	)
 
-	scheduler.Schedule(SchedulerJobDescription{
-		TaskName: "CacheDataVacuumClean",
-		Interval: 1 * time.Hour,
-		Task: func() error {
+	scheduler.MustScheduleIntervalTask(
+		"CacheDataVacuumClean",
+		time.Hour,
+		func() error {
 			recsDeleted, err := db.CacheDataVacuumClean(MaxCacheItems)
 			log.Infof("Vacuum clean cache records deleted: %d", recsDeleted)
 			return err
 		},
-	})
+	)
 
 	var workersGroup sync.WaitGroup
 	logChan := make(chan *LogLineData)
@@ -122,8 +130,9 @@ func main() {
 		workersGroup.Done()
 	}()
 	go func() {
-		scheduler.Run()
+		scheduler.Run(nil)
 		workersGroup.Done()
+		log.Info("Scheduler is finished")
 	}()
 	workersGroup.Add(3)
 
@@ -137,7 +146,7 @@ func main() {
 		log.Infof("Stopping on signal %v", sig)
 		close(usrSignalChan)
 		reader.Stop()
-		scheduler.Stop()
+		scheduler.Close()
 	}()
 
 	go func() {
@@ -192,7 +201,7 @@ func getArgs() cliArgs {
 	flag.StringVar(&args.logCmdDir, "logCmdDir", ".", "CWD for log CMD")
 	flag.StringVar(&args.reportTime, "reportTime", "22:00:00", "Report UTC time in format 22:00:00")
 	flag.StringVar(&args.reportMail, "reportMail", "", "Email to send reports")
-	flag.DurationVar(&args.scheduleInterval, "scheduleInterval", 2*time.Second, "Interval for scheduler tasks scan")
+	flag.DurationVar(&args.scheduleInterval, "scheduleInterval", time.Second, "Interval for scheduler tasks scan")
 	flag.StringVar(&args.mailerConfigPath, "mailerConfig", "secrets/mailer.json", "Config for mailer")
 	flag.BoolVar(&args.printReport, "printReport", false, "Print report to STDOUT")
 	flag.Parse()
@@ -218,11 +227,5 @@ func handleArgs(args *cliArgs) {
 
 	if _, err := os.Stat(args.mailerConfigPath); err != nil {
 		log.Fatalf("Unable to read -mailerConfig: %s", err)
-	}
-
-	scheduleMinInterval := 2 * time.Second
-	if args.scheduleInterval < scheduleMinInterval {
-		log.Warnf("-scheduleInterval is too small (%s), falling back to %s", args.scheduleInterval, scheduleMinInterval)
-		args.scheduleInterval = scheduleMinInterval
 	}
 }
