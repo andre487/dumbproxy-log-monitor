@@ -117,7 +117,7 @@ func main() {
 	)
 
 	var workersGroup sync.WaitGroup
-	logChan := make(chan *LogLineData)
+	logChan := make(chan *LogLineData, 128)
 	go func() {
 		reader.ReadLogStreamToChannel(logChan)
 		if err := db.SetLastHandledLogTimeNow(); err != nil {
@@ -137,7 +137,7 @@ func main() {
 	workersGroup.Add(3)
 
 	stopSignalChan := make(chan os.Signal, 1)
-	usrSignalChan := make(chan os.Signal)
+	usrSignalChan := make(chan os.Signal, 2)
 	signal.Notify(stopSignalChan, syscall.SIGTERM, syscall.SIGINT)
 	signal.Notify(usrSignalChan, syscall.SIGUSR1, syscall.SIGUSR2)
 
