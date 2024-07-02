@@ -3,7 +3,7 @@ module github.com/andre487/dumbproxy-log-monitor
 go 1.22.2
 
 require (
-	github.com/andre487/go-background-task-scheduler v0.0.1
+	github.com/andre487/go-background-task-scheduler v1.0.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.22
